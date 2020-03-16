@@ -1,0 +1,47 @@
+diff --git a/config.linux b/config.linux
+index 67cad1e..88ed294 100644
+--- a/config.linux
++++ b/config.linux
+@@ -1,12 +1,12 @@
+ COMPILE_OPTS =		$(INCLUDES) -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -DALLOW_RTSP_SERVER_PORT_REUSE=1
+ C =			c
+-C_COMPILER =		cc
++C_COMPILER =		afl-clang-fast -fsanitize=address
+ C_FLAGS =		$(COMPILE_OPTS) $(CPPFLAGS) $(CFLAGS)
+ CPP =			cpp
+-CPLUSPLUS_COMPILER =	c++
++CPLUSPLUS_COMPILER =	afl-clang-fast++ -fsanitize=address
+ CPLUSPLUS_FLAGS =	$(COMPILE_OPTS) -Wall -DBSD=1 $(CPPFLAGS) $(CXXFLAGS)
+ OBJ =			o
+-LINK =			c++ -o
++LINK =			afl-clang-fast++ -fsanitize=address -o
+ LINK_OPTS =		-L. $(LDFLAGS)
+ CONSOLE_LINK_OPTS =	$(LINK_OPTS)
+ LIBRARY_LINK =		ar cr 
+diff --git a/liveMedia/GenericMediaServer.cpp b/liveMedia/GenericMediaServer.cpp
+index 4690516..b1d2bf3 100644
+--- a/liveMedia/GenericMediaServer.cpp
++++ b/liveMedia/GenericMediaServer.cpp
+@@ -319,7 +319,7 @@ GenericMediaServer::ClientSession* GenericMediaServer::createNewClientSessionWit
+   // (it will be encoded as a 8-digit hex number).  (We avoid choosing session id 0,
+   // because that has a special use by some servers.)
+   do {
+-    sessionId = (u_int32_t)our_random32();
++    sessionId = (u_int32_t)8888;
+     snprintf(sessionIdStr, sizeof sessionIdStr, "%08X", sessionId);
+   } while (sessionId == 0 || lookupClientSession(sessionIdStr) != NULL);
+ 
+diff --git a/testProgs/testOnDemandRTSPServer.cpp b/testProgs/testOnDemandRTSPServer.cpp
+index 6bf44c1..476ed73 100644
+--- a/testProgs/testOnDemandRTSPServer.cpp
++++ b/testProgs/testOnDemandRTSPServer.cpp
+@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
+ #endif
+ 
+   // Create the RTSP server:
+-  RTSPServer* rtspServer = RTSPServer::createNew(*env, 8554, authDB);
++  RTSPServer* rtspServer = RTSPServer::createNew(*env, atoi(argv[1]), authDB);
+   if (rtspServer == NULL) {
+     *env << "Failed to create RTSP server: " << env->getResultMsg() << "\n";
+     exit(1);
+

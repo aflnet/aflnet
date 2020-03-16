@@ -1,0 +1,71 @@
+diff --git a/Source/Release/makefile b/Source/Release/makefile
+index 2241106..6248625 100644
+--- a/Source/Release/makefile
++++ b/Source/Release/makefile
+@@ -28,7 +28,7 @@ all: fftp
+ fftp: $(OBJS) $(USER_OBJS)
+ 	@echo 'Building target: $@'
+ 	@echo 'Invoking: GCC C Linker'
+-	gcc  -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS)
++	$(CC) $(CFLAGS)  -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS)
+ 	@echo 'Finished building target: $@'
+ 	@echo ' '
+ 
+diff --git a/Source/Release/subdir.mk b/Source/Release/subdir.mk
+index f520c4d..bcf6f32 100644
+--- a/Source/Release/subdir.mk
++++ b/Source/Release/subdir.mk
+@@ -26,7 +26,7 @@ C_DEPS += \
+ %.o: ../%.c
+ 	@echo 'Building file: $<'
+ 	@echo 'Invoking: GCC C Compiler'
+-	gcc -std=c99 -O3 -Wall -Wextra -c -fmessage-length=0 -Wno-unused-parameter -Wno-unused-result -fno-ident -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
++	$(CC) $(CFLAGS) -std=c99 -O3 -Wall -Wextra -c -fmessage-length=0 -Wno-unused-parameter -Wno-unused-result -fno-ident -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+ 	@echo 'Finished building: $<'
+ 	@echo ' '
+ 
+diff --git a/Source/ftpserv.c b/Source/ftpserv.c
+index d63d993..3d70357 100644
+--- a/Source/ftpserv.c
++++ b/Source/ftpserv.c
+@@ -2036,6 +2036,9 @@ void *ftpmain(void *p)
+ 				close(clientsocket);
+ 			}
+ 		}
++    //Terminate the main thread when the child thread terminates
++		pthread_join(th, NULL);
++    break;
+ 	}
+ 
+ 	free(scb);
+diff --git a/Source/main.c b/Source/main.c
+index eaa1a55..d2c405e 100644
+--- a/Source/main.c
++++ b/Source/main.c
+@@ -106,9 +106,10 @@ int main(int argc, char *argv[])
+ 		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "local_mask", textbuf, bufsize))
+ 			g_cfg.LocalIPMask = inet_addr(textbuf);
+ 
+-		g_cfg.Port = DEFAULT_FTP_PORT;
+-		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "port", textbuf, bufsize))
+-			g_cfg.Port = strtoul(textbuf, NULL, 10);
++		//g_cfg.Port = DEFAULT_FTP_PORT;
++		//if (ParseConfig(cfg, CONFIG_SECTION_NAME, "port", textbuf, bufsize))
++		//	g_cfg.Port = strtoul(textbuf, NULL, 10);
++    g_cfg.Port = strtoul(argv[2], NULL, 10);
+ 
+ 		g_cfg.MaxUsers = 1;
+ 		if (ParseConfig(cfg, CONFIG_SECTION_NAME, "maxusers", textbuf, bufsize))
+@@ -188,10 +189,8 @@ int main(int argc, char *argv[])
+ 			break;
+ 		}
+ 
+-		do {
+-			c = getc(stdin);
+-			sleep(1);
+-		} while ((c != 'q') && (c != 'Q'));
++    //Terminate the server when the main thread terminates
++		pthread_join(thid, NULL);
+ 
+ 		break;
+ 	}
