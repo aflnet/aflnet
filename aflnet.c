@@ -153,6 +153,176 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
+static char dtls_version[2] = {0xFE, 0xFD};
+
+void hexdump(unsigned char *msg, unsigned char * buf, int start, int end) {
+  printf("%s : ", msg);
+  for (int i=start; i<end; i++) {
+      printf("%02x", buf[i]);
+    }
+    printf("\n");
+}
+
+region_t *extract_requests_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  char *mem;
+  unsigned int byte_count = 0;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+
+  mem=(char *)ck_alloc(mem_size);
+
+  unsigned int cur_start = 0;
+  unsigned int cur_end = 0;
+
+   while (byte_count < buf_size) { 
+     
+     memcpy(&mem[mem_count], buf + byte_count++, 1);
+ 
+     //Check if the first three bytes are <valid_content_type><dtls-1.2>
+     if ((mem_count > 3) && 
+     ( (mem[mem_count-2] == HS_CONTENT_TYPE || mem[mem_count-2] == CCS_CONTENT_TYPE || mem[mem_count-2] == ALERT_CONTENT_TYPE)  && 
+     memcmp(&mem[mem_count - 1], dtls_version, 2) == 0)) {
+       region_count++;
+       regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+       regions[region_count - 1].start_byte = cur_start;
+       regions[region_count - 1].end_byte = cur_end - 2;
+       regions[region_count - 1].state_sequence = NULL;
+       regions[region_count - 1].state_count = 0;
+         
+       mem_count = 0;  
+       cur_start = cur_end - 2;
+       hexdump("region", buf, regions[region_count - 1].start_byte, regions[region_count - 1].end_byte );
+     } else { 
+      mem_count++; 
+      cur_end++;  
+
+      //Check if the last byte has been reached
+      if (cur_end == buf_size - 1) {
+        region_count++;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = cur_end;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+        break;
+      }
+
+      if (mem_count == mem_size) {
+        //enlarge the mem buffer
+        mem_size = mem_size * 2;
+        mem=(char *)ck_realloc(mem, mem_size);
+      }
+     }
+  }
+
+  if (mem) ck_free(mem);
+
+  //in case region_count equals zero, it means that the structure of the buffer is broken 
+  //hence we create one region for the whole buffer
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+
+    region_count = 1;
+  }
+  
+  *region_count_ref = region_count;
+  return regions;
+}
+
+unsigned int read_bytes(unsigned char* buf, unsigned int offset, int num_bytes) {
+  if (num_bytes > 0 && num_bytes < 5) {
+    unsigned int val = 0;
+    for (int i=0; i<num_bytes; i++) {
+      val = (val << 8) + buf[i+offset];
+    }
+    return val;
+  } else {
+    exit(-1);
+    return 0;
+  }
+}
+
+unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) 
+{
+  unsigned int byte_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  unsigned int status_code = 0xFFFF; // unknown status code
+
+  unsigned int hs_msg_type;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (byte_count < buf_size) {
+    if ( (buf_size - byte_count > 13) && (memcmp(&buf[byte_count+1], dtls_version, 2) == 0)) {
+      unsigned int record_length = read_bytes(buf, 11, 2);
+      unsigned char content_type = read_bytes(buf, 0, 1);
+      switch(content_type) {
+        case HS_CONTENT_TYPE:
+          hs_msg_type = read_bytes(buf, 13, 1);
+          if (buf_size - byte_count > 24) {
+            unsigned int frag_length = read_bytes(buf, 22, 3);
+            // assuming every record contains a single fragment, we can check if the handshake record is encrypted
+            // comparing their respective lengths
+            if (record_length - frag_length == 12) {
+              // not encrypted
+              status_code = (content_type << 8) + hs_msg_type;
+            } else {
+              // encrypted handshake message
+              status_code = (content_type << 8);
+            }
+          } else {
+              // encrypted, though unexpected
+              status_code = (content_type << 8);
+          }
+        break;
+        case CCS_CONTENT_TYPE:
+          if (record_length == 1) {
+            // unencrypted CCS
+            unsigned int ccs_msg_type = read_bytes(buf, 13, 1);
+            status_code = (content_type << 8) + ccs_msg_type;
+          } else {
+            // encrypted CCS
+            status_code = (content_type << 8);
+          }
+        break;
+        case ALERT_CONTENT_TYPE:
+          if (record_length == 2) {
+            // unencrypted alert
+            unsigned int level_and_type = read_bytes(buf, 13, 2);
+            status_code = (content_type << 8) + level_and_type;
+          } else {
+            // encrypted alert
+            status_code = (content_type << 8);
+          }
+        break;
+        default:
+          // unknown message type
+          status_code = 0;
+        break;
+      }
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = status_code;
+      byte_count += record_length;
+    } else {
+      // we shouldn't really be reaching this code
+      byte_count ++;
+    }
+  }
+
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;

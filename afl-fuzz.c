@@ -1016,9 +1016,13 @@ int send_over_network()
     response_buf_size = 0;
   }
  
-  //Create a TCP socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  
+  //Create a TCP/UDP socket
+  int sockfd = -1;
+  if (net_protocol == PRO_TCP)
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  else if (net_protocol == PRO_UDP)
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
   if (sockfd < 0) {
     PFATAL("Cannot create a socket");
   }
@@ -8927,7 +8931,12 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "FTP")) {
           extract_requests = &extract_requests_ftp;
           extract_response_codes = &extract_response_codes_ftp;        
-        } else FATAL("%s protocol is not supported yet!", optarg);
+        } else if (!strcmp(optarg, "DTLS")) {
+          extract_requests = &extract_requests_dtls;
+          extract_response_codes = &extract_response_codes_dtls;
+        } else
+        
+        FATAL("%s protocol is not supported yet!", optarg);
 
         protocol_selected = 1;
 

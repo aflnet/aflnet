@@ -55,14 +55,23 @@ KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equa
 
 // Functions for extracting requests and responses
 
+// DTLS constants
+#define HS_CONTENT_TYPE 0x16
+#define CCS_CONTENT_TYPE 0x14
+#define ALERT_CONTENT_TYPE 0x15
+//#define DTLS_VERSION {0xFE, 0xFD}
+
+
 /*To add support for a new application protocol, please add corresponding function declartion and implmentation
 And update the code to handle -P option in the main function in afl-fuzz.c accordingly */
 unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 
 region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 extern region_t* (*extract_requests)(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 
 // Network communication functions
