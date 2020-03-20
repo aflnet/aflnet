@@ -157,67 +157,48 @@ static char dtls_version[2] = {0xFE, 0xFD};
 
 void hexdump(unsigned char *msg, unsigned char * buf, int start, int end) {
   printf("%s : ", msg);
-  for (int i=start; i<end; i++) {
+  for (int i=start; i<=end; i++) {
       printf("%02x", buf[i]);
     }
     printf("\n");
 }
 
 region_t *extract_requests_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
-  char *mem;
   unsigned int byte_count = 0;
-  unsigned int mem_count = 0;
-  unsigned int mem_size = 1024;
   unsigned int region_count = 0;
   region_t *regions = NULL;
 
-  mem=(char *)ck_alloc(mem_size);
-
   unsigned int cur_start = 0;
-  unsigned int cur_end = 0;
 
    while (byte_count < buf_size) { 
-     
-     memcpy(&mem[mem_count], buf + byte_count++, 1);
- 
      //Check if the first three bytes are <valid_content_type><dtls-1.2>
-     if ((mem_count > 3) && 
-     ( (mem[mem_count-2] == HS_CONTENT_TYPE || mem[mem_count-2] == CCS_CONTENT_TYPE || mem[mem_count-2] == ALERT_CONTENT_TYPE)  && 
-     memcmp(&mem[mem_count - 1], dtls_version, 2) == 0)) {
+     if ((byte_count > 3 && buf_size - byte_count > 1) && 
+     ( (buf[byte_count] == HS_CONTENT_TYPE || buf[byte_count] == CCS_CONTENT_TYPE || buf[byte_count] == ALERT_CONTENT_TYPE)  && 
+     memcmp(&buf[byte_count+1], dtls_version, 2) == 0)) {
        region_count++;
        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
        regions[region_count - 1].start_byte = cur_start;
-       regions[region_count - 1].end_byte = cur_end - 2;
+       regions[region_count - 1].end_byte = byte_count-1;
        regions[region_count - 1].state_sequence = NULL;
        regions[region_count - 1].state_count = 0;
-         
-       mem_count = 0;  
-       cur_start = cur_end - 2;
+       cur_start = byte_count;
        hexdump("region", buf, regions[region_count - 1].start_byte, regions[region_count - 1].end_byte );
      } else { 
-      mem_count++; 
-      cur_end++;  
 
       //Check if the last byte has been reached
-      if (cur_end == buf_size - 1) {
+      if (byte_count == buf_size - 1) {
         region_count++;
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_end;
+        regions[region_count - 1].end_byte = byte_count;
         regions[region_count - 1].state_sequence = NULL;
         regions[region_count - 1].state_count = 0;
         break;
       }
-
-      if (mem_count == mem_size) {
-        //enlarge the mem buffer
-        mem_size = mem_size * 2;
-        mem=(char *)ck_realloc(mem, mem_size);
-      }
      }
-  }
 
-  if (mem) ck_free(mem);
+     byte_count ++;
+  }
 
   //in case region_count equals zero, it means that the structure of the buffer is broken 
   //hence we create one region for the whole buffer
