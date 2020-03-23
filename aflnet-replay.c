@@ -23,14 +23,25 @@ int main(int argc, char* argv[])
   int response_buf_size = 0;
   unsigned int size, i, state_count, packet_count = 0;
   unsigned int *state_sequence;
+  unsigned int supplied_timeout = 0;
+
+
+  if (argc < 4) {
+    PFATAL("Usage: ./aflnet-replay packet_file protocol port [timeout(ms)]");
+  }
 
   fp = fopen(argv[1],"rb");
 
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
+  else if (!strcmp(argv[2], "DTLS")) extract_response_codes = &extract_response_codes_dtls;
   else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[3]); exit(1);}
 
   portno = atoi(argv[3]);
+
+  if (argc > 4) {
+    supplied_timeout = atoi(argv[4]);
+  }
 
   //Wait for the server to initialize
   usleep(server_wait_usecs);
@@ -41,7 +52,12 @@ int main(int argc, char* argv[])
     response_buf_size = 0;
   }
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd; 
+  if (!strcmp(argv[2], "DTLS")) {
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+  } else {
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  }
   
   if (sockfd < 0) {
     PFATAL("Cannot create a socket");
@@ -50,8 +66,17 @@ int main(int argc, char* argv[])
   //Set timeout for socket data sending/receiving -- otherwise it causes a big delay
   //if the server is still alive after processing all the requests
   struct timeval timeout;
+
   timeout.tv_sec = 0;
-  timeout.tv_usec = 1000;
+  if (!supplied_timeout) {
+    //timeout.tv_usec = 1000;
+    timeout.tv_usec = 100000;
+  }
+  else
+  {
+    timeout.tv_usec = supplied_timeout * 1000;
+  }
+  
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));

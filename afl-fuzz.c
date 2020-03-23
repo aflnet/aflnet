@@ -794,8 +794,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
       for(i=1; i < state_count; i++) {
         unsigned int curStateID = state_sequence[i];
         char fromState[10], toState[10];
-        sprintf(fromState, "%d", prevStateID);
-        sprintf(toState, "%d", curStateID);
+        sprintf(fromState, "%04X", prevStateID);
+        sprintf(toState, "%04X", curStateID);
 
         //Check if the prevStateID and curStateID have been added to the state machine as vertices
         //Check also if the edge prevStateID->curStateID has been added
@@ -1031,7 +1031,8 @@ int send_over_network()
   //if the server is still alive after processing all the requests
   struct timeval timeout;
   timeout.tv_sec = 0;
-  timeout.tv_usec = 1000;
+  //timeout.tv_usec = 1000;
+  timeout.tv_usec = 100000;
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
