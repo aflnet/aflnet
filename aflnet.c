@@ -182,7 +182,7 @@ region_t *extract_requests_dtls(unsigned char* buf, unsigned int buf_size, unsig
        regions[region_count - 1].state_sequence = NULL;
        regions[region_count - 1].state_count = 0;
        cur_start = byte_count;
-       hexdump("region", buf, regions[region_count - 1].start_byte, regions[region_count - 1].end_byte );
+       //hexdump("region", buf, regions[region_count - 1].start_byte, regions[region_count - 1].end_byte );
      } else { 
 
       //Check if the last byte has been reached
@@ -229,14 +229,22 @@ unsigned int read_bytes(unsigned char* buf, unsigned int offset, int num_bytes) 
   }
 }
 
+
+// a status code comprises <content_type, message_type> tuples
 unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) 
 {
   unsigned int byte_count = 0;
   unsigned int *state_sequence = NULL;
   unsigned int state_count = 0;
-  unsigned int status_code = 0xFFFF; // unknown status code
+  unsigned int status_code = 0; // unknown status code
+
+  unsigned int unknown_content_type = 0xFF; // when content type is not known, either due to bug in this method or in the server
+  unsigned int unknown_msg_type = 0xFF; // when but message type cannot be determined (because the message is encrypted)
+  unsigned int malformed_msg_type = 0xFE; // when message type appear malformed
 
   unsigned int hs_msg_type;
+
+  // hexdump("Extracting status codes from from bytes:\n", buf, 0, buf_size-1);
 
   state_count++;
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -244,13 +252,13 @@ unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_s
 
   while (byte_count < buf_size) {
     if ( (buf_size - byte_count > 13) && (memcmp(&buf[byte_count+1], dtls_version, 2) == 0)) {
-      unsigned int record_length = read_bytes(buf, 11, 2);
-      unsigned char content_type = read_bytes(buf, 0, 1);
+      unsigned int record_length = read_bytes(buf, byte_count+11, 2);
+      unsigned char content_type = read_bytes(buf, byte_count, 1);
       switch(content_type) {
         case HS_CONTENT_TYPE:
-          hs_msg_type = read_bytes(buf, 13, 1);
+          hs_msg_type = read_bytes(buf, byte_count+13, 1);
           if (buf_size - byte_count > 24) {
-            unsigned int frag_length = read_bytes(buf, 22, 3);
+            unsigned int frag_length = read_bytes(buf, byte_count+22, 3);
             // assuming every record contains a single fragment, we can check if the handshake record is encrypted
             // comparing their respective lengths
             if (record_length - frag_length == 12) {
@@ -258,36 +266,37 @@ unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_s
               status_code = (content_type << 8) + hs_msg_type;
             } else {
               // encrypted handshake message
-              status_code = (content_type << 8);
+              status_code = (content_type << 8) + unknown_msg_type;
             }
           } else {
-              // encrypted, though unexpected
-              status_code = (content_type << 8);
+              // encrypted, though unexpected. It means the response is malformed (either that, or our way of processing it)
+              status_code = (content_type << 8) + malformed_msg_type;
           }
         break;
         case CCS_CONTENT_TYPE:
           if (record_length == 1) {
             // unencrypted CCS
-            unsigned int ccs_msg_type = read_bytes(buf, 13, 1);
+            unsigned int ccs_msg_type = read_bytes(buf, byte_count+13, 1);
             status_code = (content_type << 8) + ccs_msg_type;
           } else {
             // encrypted CCS
-            status_code = (content_type << 8);
+            status_code = (content_type << 8) + unknown_msg_type;
           }
         break;
         case ALERT_CONTENT_TYPE:
           if (record_length == 2) {
-            // unencrypted alert
-            unsigned int level_and_type = read_bytes(buf, 13, 2);
-            status_code = (content_type << 8) + level_and_type;
+            // unencrypted alert, the type is sufficient for determining which alert occurred
+            unsigned int level = read_bytes(buf, byte_count+13, 1);
+            unsigned int type = read_bytes(buf, byte_count+14, 1);
+            status_code = (content_type << 8) + type;
           } else {
             // encrypted alert
-            status_code = (content_type << 8);
+            status_code = (content_type << 8) + unknown_msg_type;
           }
         break;
         default:
           // unknown message type
-          status_code = 0;
+          status_code = unknown_content_type << 8 + unknown_msg_type;
         break;
       }
       state_count++;
@@ -299,6 +308,12 @@ unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_s
       byte_count ++;
     }
   }
+
+  // printf("Responses received:\n");
+  // for (int i=0; i<state_count; i++) {
+  //   printf("%04X ", state_sequence[i]);
+  // }
+  // printf("\n");
 
   *state_count_ref = state_count;
   return state_sequence;
