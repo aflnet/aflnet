@@ -296,7 +296,7 @@ unsigned int* extract_response_codes_dtls(unsigned char* buf, unsigned int buf_s
         break;
         default:
           // unknown message type
-          status_code = unknown_content_type << 8 + unknown_msg_type;
+          status_code = (unknown_content_type << 8) + unknown_msg_type;
         break;
       }
       state_count++;
