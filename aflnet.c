@@ -580,10 +580,11 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
   int rv = poll(pfd, 1, poll_w);
   
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  // data received
   if (rv > 0) {
     if (pfd[0].revents & POLLIN) {
       n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-      if ((n < 0) && (errno != 11)) {
+      if ((n < 0) && (errno != EAGAIN)) {
         return 1;
       }
       while (n > 0) {
@@ -592,12 +593,14 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
         memcpy(&(*response_buf)[*len], temp_buf, n);
         *len = *len + n;
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-        if ((n < 0) && (errno != 11)) {
+        if ((n < 0) && (errno != EAGAIN)) {
           return 1;
         }
       }   
     }
-  } else if (rv < 0) return 1;
+  } else if (rv < 0) // an error was returned 
+    return 1;
+  // rv == 0 (poll timeout) or all data pending after poll has been received successfully
   return 0;
 }
 

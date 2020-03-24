@@ -353,6 +353,7 @@ static inline u8 has_new_bits(u8* virgin_map);
 /* AFLNet-specific variables & functions */
 
 u32 server_wait_usecs = 10000;
+u32 response_wait_usecs = 1000;
 u8 net_protocol;
 u8* net_ip;
 u32 net_port;
@@ -375,6 +376,7 @@ u32 max_seed_region_count = 0;
 /* flags */
 u8 use_net = 0;
 u8 server_wait = 0;
+u8 response_wait = 0;
 u8 protocol_selected = 0;
 u8 terminate_child = 0;
 u8 corpus_read_or_sync = 0;
@@ -768,6 +770,7 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
 /* Update state-aware variables */
 void update_state_aware_variables(struct queue_entry *q, u8 dry_run) 
 {
+  //printf("Updating state-aware variables\n");
   khint_t k;
   int discard, i;
   state_info_t *state;
@@ -1031,8 +1034,8 @@ int send_over_network()
   //if the server is still alive after processing all the requests
   struct timeval timeout;
   timeout.tv_sec = 0;
-  //timeout.tv_usec = 1000;
-  timeout.tv_usec = 100000;
+  timeout.tv_usec = response_wait_usecs;
+  //timeout.tv_usec = 100000;
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
@@ -1089,6 +1092,7 @@ int send_over_network()
 HANDLE_RESPONSES:
 
   net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size);
+  //printf("Sent a sequence of %d messages\n", messages_sent);
   
   //wait a bit letting the server to complete its remaing task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
@@ -3567,6 +3571,8 @@ static void perform_dry_run(char** argv) {
 
     /* AFLNet delete the kl_messages */
     delete_kl_messages(kl_messages);
+
+    FATAL("Check times SUL is executed");
 
     if (stop_soon) return;
 
@@ -8741,7 +8747,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:P:KEq:s:RFc:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:P:KEq:s:RFc:")) > 0)
 
     switch (opt) {
 
@@ -8921,6 +8927,13 @@ int main(int argc, char** argv) {
         
         if (sscanf(optarg, "%u", &server_wait_usecs) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -D");
         server_wait = 1;
+        break;
+
+      case 'W': /* waiting time for each response (should be sufficient not to overflood server) */
+        if (response_wait) FATAL("Multiple -W options not supported");
+
+        if (sscanf(optarg, "%u", &response_wait_usecs) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -D");
+        response_wait = 1;
         break;
 
       case 'P': /* protocol to be tested */
