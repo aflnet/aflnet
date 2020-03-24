@@ -3572,8 +3572,6 @@ static void perform_dry_run(char** argv) {
     /* AFLNet delete the kl_messages */
     delete_kl_messages(kl_messages);
 
-    FATAL("Check times SUL is executed");
-
     if (stop_soon) return;
 
     if (res == crash_mode || res == FAULT_NOBITS)
