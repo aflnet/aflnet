@@ -34,18 +34,15 @@ ENV AFL_PATH="${AFLNET}"
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1
 
-# Download and compile LightFTP
+# Download and compile Live555
 RUN cd /home/ubuntu && \
-    git clone https://github.com/hfiref0x/LightFTP.git && \
-    cd LightFTP && \
-    git checkout 5980ea1 && \
-    patch -p1 < ${AFLNET}/tutorials/lightftp/5980ea1.patch && \
-    cd Source/Release && \
-    CC=afl-clang-fast make clean all
+    git clone https://github.com/rgaufman/live555.git && \
+    cd live555 && \
+    git checkout ceeb4f4 && \
+    patch -p1 < $AFLNET/tutorials/live555/ceeb4f4_states_decomposed.patch && \
+    ./genMakefiles linux && \
+    make clean all
 
-# Set up LightFTP for fuzzing
-RUN cd /home/ubuntu/LightFTP/Source/Release && \
-    cp ${AFLNET}/tutorials/lightftp/fftp.conf ./ && \
-    cp ${AFLNET}/tutorials/lightftp/ftpclean.sh ./ && \
-    cp -r ${AFLNET}/tutorials/lightftp/certificate ~/ && \
-    mkdir ~/ftpshare
+# Set up Live555 for fuzzing
+RUN cd /home/ubuntu/live555/testProgs && \
+    cp ${AFLNET}/tutorials/live555/sample_media_sources/*.* ./
