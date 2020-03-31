@@ -770,7 +770,6 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
 /* Update state-aware variables */
 void update_state_aware_variables(struct queue_entry *q, u8 dry_run) 
 {
-  //printf("Updating state-aware variables\n");
   khint_t k;
   int discard, i;
   state_info_t *state;
@@ -797,8 +796,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
       for(i=1; i < state_count; i++) {
         unsigned int curStateID = state_sequence[i];
         char fromState[10], toState[10];
-        sprintf(fromState, "%04X", prevStateID);
-        sprintf(toState, "%04X", curStateID);
+        sprintf(fromState, "%d", prevStateID);
+        sprintf(toState, "%d", curStateID);
 
         //Check if the prevStateID and curStateID have been added to the state machine as vertices
         //Check also if the edge prevStateID->curStateID has been added
@@ -1035,7 +1034,6 @@ int send_over_network()
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = response_wait_usecs;
-  //timeout.tv_usec = 100000;
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
@@ -1092,7 +1090,6 @@ int send_over_network()
 HANDLE_RESPONSES:
 
   net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size);
-  //printf("Sent a sequence of %d messages\n", messages_sent);
   
   //wait a bit letting the server to complete its remaing task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
@@ -8056,7 +8053,7 @@ static void usage(u8* argv0) {
        "Settings for network protocol fuzzing (AFLNet):\n\n"
 
        "  -N netinfo    - server information (e.g., tcp://127.0.0.1/8554)\n"
-       "  -P protocol   - application protocol to be tested (e.g., RTSP)\n"
+       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12)\n"
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
        "  -K            - send SIGTERM to gracefully terminate the server (see README.md)\n"
        "  -E            - enable state aware mode (see README.md)\n"
@@ -8943,9 +8940,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "FTP")) {
           extract_requests = &extract_requests_ftp;
           extract_response_codes = &extract_response_codes_ftp;        
-        } else if (!strcmp(optarg, "DTLS")) {
-          extract_requests = &extract_requests_dtls;
-          extract_response_codes = &extract_response_codes_dtls;
+        } else if (!strcmp(optarg, "DTLS12")) {
+          extract_requests = &extract_requests_dtls12;
+          extract_response_codes = &extract_response_codes_dtls12;
         } else
         
         FATAL("%s protocol is not supported yet!", optarg);

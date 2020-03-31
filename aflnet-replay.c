@@ -12,6 +12,8 @@ unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_siz
 1. Path to the test case (e.g., crash-triggering input)
 2. Application protocol (e.g., RTSP, FTP)
 3. Server's network port
+Optional:
+4. Response timeout (us), default 1000
 */
 
 int main(int argc, char* argv[])
@@ -27,14 +29,14 @@ int main(int argc, char* argv[])
 
 
   if (argc < 4) {
-    PFATAL("Usage: ./aflnet-replay packet_file protocol port [timeout(ms)]");
+    PFATAL("Usage: ./aflnet-replay packet_file protocol port [timeout(us)]");
   }
 
   fp = fopen(argv[1],"rb");
 
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
-  else if (!strcmp(argv[2], "DTLS")) extract_response_codes = &extract_response_codes_dtls;
+  else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[3]); exit(1);}
 
   portno = atoi(argv[3]);
@@ -53,7 +55,7 @@ int main(int argc, char* argv[])
   }
 
   int sockfd; 
-  if (!strcmp(argv[2], "DTLS")) {
+  if (!strcmp(argv[2], "DTLS12")) {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   } else {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -69,12 +71,11 @@ int main(int argc, char* argv[])
 
   timeout.tv_sec = 0;
   if (!supplied_timeout) {
-    //timeout.tv_usec = 1000;
-    timeout.tv_usec = 100000;
+    timeout.tv_usec = 1000;
   }
   else
   {
-    timeout.tv_usec = supplied_timeout * 1000;
+    timeout.tv_usec = supplied_timeout;
   }
   
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
