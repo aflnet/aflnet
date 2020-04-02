@@ -353,6 +353,8 @@ static inline u8 has_new_bits(u8* virgin_map);
 /* AFLNet-specific variables & functions */
 
 u32 server_wait_usecs = 10000;
+u32 poll_wait_msecs = 1;
+u32 socket_timeout_usecs = 1000;
 u8 net_protocol;
 u8* net_ip;
 u32 net_port;
@@ -374,7 +376,9 @@ u32 max_seed_region_count = 0;
 
 /* flags */
 u8 use_net = 0;
+u8 poll_wait = 0;
 u8 server_wait = 0;
+u8 socket_timeout = 0;
 u8 protocol_selected = 0;
 u8 terminate_child = 0;
 u8 corpus_read_or_sync = 0;
@@ -1016,9 +1020,13 @@ int send_over_network()
     response_buf_size = 0;
   }
  
-  //Create a TCP socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  
+  //Create a TCP/UDP socket
+  int sockfd = -1;
+  if (net_protocol == PRO_TCP)
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  else if (net_protocol == PRO_UDP)
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
   if (sockfd < 0) {
     PFATAL("Cannot create a socket");
   }
@@ -1027,7 +1035,7 @@ int send_over_network()
   //if the server is still alive after processing all the requests
   struct timeval timeout;
   timeout.tv_sec = 0;
-  timeout.tv_usec = 1000;
+  timeout.tv_usec = socket_timeout_usecs;
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
@@ -1050,7 +1058,7 @@ int send_over_network()
   }
   
   //retrieve early server response if needed
-  if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) goto HANDLE_RESPONSES;  
+  if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) goto HANDLE_RESPONSES;  
 
   //write the request messages
   kliter_t(lms) *it;
@@ -1071,7 +1079,7 @@ int send_over_network()
 
     //retrieve server response
     u32 prev_buf_size = response_buf_size;
-    if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) {
+    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) {
       goto HANDLE_RESPONSES;
     }
 
@@ -1083,7 +1091,7 @@ int send_over_network()
    
 HANDLE_RESPONSES:
 
-  net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size);
+  net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
   
   //wait a bit letting the server to complete its remaing task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
@@ -8047,8 +8055,10 @@ static void usage(u8* argv0) {
        "Settings for network protocol fuzzing (AFLNet):\n\n"
 
        "  -N netinfo    - server information (e.g., tcp://127.0.0.1/8554)\n"
-       "  -P protocol   - application protocol to be tested (e.g., RTSP)\n"
+       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12)\n"
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
+       "  -W msec       - waiting time (in miliseconds) for receiving the first response to each input sent\n"
+       "  -w usec       - waiting time (in micro seconds) for receiving follow-up responses\n"
        "  -K            - send SIGTERM to gracefully terminate the server (see README.md)\n"
        "  -E            - enable state aware mode (see README.md)\n"
        "  -R            - enable region-level mutation operators (see README.md)\n"
@@ -8736,7 +8746,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:P:KEq:s:RFc:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:")) > 0)
 
     switch (opt) {
 
@@ -8918,6 +8928,20 @@ int main(int argc, char** argv) {
         server_wait = 1;
         break;
 
+      case 'W': /* polling timeout determining maximum amount of time waited before concluding that no responses are forthcoming*/
+        if (socket_timeout) FATAL("Multiple -W options not supported");
+
+        if (sscanf(optarg, "%u", &poll_wait_msecs) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -W");
+        poll_wait = 1;
+        break;
+
+      case 'w': /* receive/send socket timeout determining time waited for each response */
+        if (socket_timeout) FATAL("Multiple -w options not supported");
+
+        if (sscanf(optarg, "%u", &socket_timeout_usecs) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -w");
+        socket_timeout = 1;
+        break;
+
       case 'P': /* protocol to be tested */
         if (protocol_selected) FATAL("Multiple -P options not supported");
         
@@ -8927,7 +8951,12 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "FTP")) {
           extract_requests = &extract_requests_ftp;
           extract_response_codes = &extract_response_codes_ftp;        
-        } else FATAL("%s protocol is not supported yet!", optarg);
+        } else if (!strcmp(optarg, "DTLS12")) {
+          extract_requests = &extract_requests_dtls12;
+          extract_response_codes = &extract_response_codes_dtls12;
+        } else
+        
+        FATAL("%s protocol is not supported yet!", optarg);
 
         protocol_selected = 1;
 

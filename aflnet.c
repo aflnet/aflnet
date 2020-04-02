@@ -153,6 +153,198 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
+static unsigned char dtls12_version[2] = {0xFE, 0xFD};
+
+// (D)TLS known and custom constants
+
+// the known 1-byte (D)TLS content types
+#define CCS_CONTENT_TYPE 0x14
+#define ALERT_CONTENT_TYPE 0x15
+#define HS_CONTENT_TYPE 0x16
+#define APPLICATION_CONTENT_TYPE 0x17
+#define HEARTBEAT_CONTENT_TYPE 0x18
+
+// custom content types
+#define UNKNOWN_CONTENT_TYPE 0xFF // the content type is unrecognized
+
+// custom handshake types (for handshake content)
+#define UNKNOWN_MESSAGE_TYPE 0xFF // when the message type cannot be determined because the message is likely encrypted
+#define MALFORMED_MESSAGE_TYPE 0xFE // when message type cannot be determined because the message appears to be malformed
+
+region_t *extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  unsigned int byte_count = 0;
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+
+  unsigned int cur_start = 0;
+
+   while (byte_count < buf_size) { 
+
+     //Check if the first three bytes are <valid_content_type><dtls-1.2>
+     if ((byte_count > 3 && buf_size - byte_count > 1) && 
+     (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  && 
+     (memcmp(&buf[byte_count+1], dtls12_version, 2) == 0)) {
+       region_count++;
+       regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+       regions[region_count - 1].start_byte = cur_start;
+       regions[region_count - 1].end_byte = byte_count-1;
+       regions[region_count - 1].state_sequence = NULL;
+       regions[region_count - 1].state_count = 0;
+       cur_start = byte_count;
+     } else { 
+
+      //Check if the last byte has been reached
+      if (byte_count == buf_size - 1) {
+        region_count++;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = byte_count;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+        break;
+      }
+     }
+
+     byte_count ++;
+  }
+
+  //in case region_count equals zero, it means that the structure of the buffer is broken 
+  //hence we create one region for the whole buffer
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+
+    region_count = 1;
+  }
+  
+  *region_count_ref = region_count;
+  return regions;
+}
+
+// a status code comprises <content_type, message_type> tuples
+// message_type varies depending on content_type (e.g. for handshake content, message_type is the handshake message type...)
+// 
+unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) 
+{
+  unsigned int byte_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  unsigned int status_code = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0; // initial status code is 0
+
+  while (byte_count < buf_size) {
+    // a DTLS 1.2 record has a 13 bytes header, followed by the contained message
+    if ( (buf_size - byte_count > 13) &&
+    (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  && 
+    (memcmp(&buf[byte_count+1], dtls12_version, 2) == 0)) {
+      unsigned char content_type = buf[byte_count];
+      unsigned char message_type;
+      u32 record_length = read_bytes_to_uint32(buf, byte_count+11, 2);
+      
+      // the record length exceeds buffer boundaries (not expected)
+      if (buf_size - byte_count - 13 - record_length < 0) {
+        message_type = MALFORMED_MESSAGE_TYPE;
+      }
+      else {
+        switch(content_type) {
+          case HS_CONTENT_TYPE: ;
+            unsigned char hs_msg_type = buf[byte_count+13];
+            // the minimum size of a correct DTLS 1.2 handshake message is 12 bytes comprising fragment header fields
+            if (record_length >= 12) {
+              u32 frag_length = read_bytes_to_uint32(buf, byte_count+22, 3);
+              // we can check if the handshake record is encrypted by subtracting fragment length from record length 
+              // which should yield 12 if the fragment is not encrypted
+              // the likelyhood for an encrypted fragment to satisfy this condition is very small 
+              if (record_length - frag_length == 12) {
+                // not encrypted
+                message_type = hs_msg_type;
+              } else {
+                // encrypted handshake message
+                message_type = UNKNOWN_MESSAGE_TYPE;
+              }
+            } else {
+                // malformed handshake message
+                message_type = MALFORMED_MESSAGE_TYPE;
+            }
+          break;
+          case CCS_CONTENT_TYPE:
+            if (record_length == 1) {
+              // unencrypted CCS
+              unsigned char ccs_msg_type = buf[byte_count+13];
+              message_type = ccs_msg_type;
+            } else {
+              if (record_length > 1) {
+                // encrypted CCS
+                message_type = UNKNOWN_MESSAGE_TYPE;
+              } else {
+                // malformed CCS
+                message_type = MALFORMED_MESSAGE_TYPE;
+              }
+            }
+          break;
+          case ALERT_CONTENT_TYPE:
+            if (record_length == 2) {
+              // unencrypted alert, the type is sufficient for determining which alert occurred
+              // unsigned char level = buf[byte_count+13];
+              unsigned char type = buf[byte_count+14];
+              message_type = type;
+            } else {
+              if (record_length > 2) {
+                // encrypted alert
+                message_type = UNKNOWN_MESSAGE_TYPE;
+              } else {
+                // malformed alert
+                message_type = MALFORMED_MESSAGE_TYPE;
+              }
+            }
+          break;
+          case APPLICATION_CONTENT_TYPE:
+            // for application messages we cannot determine whether they are encrypted or not
+            message_type = UNKNOWN_MESSAGE_TYPE;
+          break;
+          case HEARTBEAT_CONTENT_TYPE:
+            // a heartbeat message is at least 3 bytes long (1 byte type, 2 bytes payload length)
+            // unfortunately, telling an encrypted message from an unencrypted message cannot be done reliably due to the variable length of padding
+            // hence we just use unknown for either case
+            if (record_length >= 3) {
+              // unsigned char hb_msg_type = buf[byte_count+13];
+              // u32 hb_length = read_bytes_to_uint32(buf, byte_count+14, 2);
+              // unkown heartbeat message
+              message_type = UNKNOWN_MESSAGE_TYPE;
+            } else {
+              // malformed heartbeat
+              message_type = MALFORMED_MESSAGE_TYPE;
+            }
+          break;
+          default:
+            // unknown content and message type, should not be hit
+            content_type = UNKNOWN_CONTENT_TYPE;
+            message_type = UNKNOWN_MESSAGE_TYPE;
+          break;
+        }
+      }
+
+      status_code = (content_type << 8) + message_type;
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = status_code;
+      byte_count += record_length;
+    } else {
+      // we shouldn't really be reaching this code
+      byte_count ++;
+    }
+  }
+
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -414,10 +606,11 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
   int rv = poll(pfd, 1, poll_w);
   
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  // data received
   if (rv > 0) {
     if (pfd[0].revents & POLLIN) {
       n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-      if ((n < 0) && (errno != 11)) {
+      if ((n < 0) && (errno != EAGAIN)) {
         return 1;
       }
       while (n > 0) {
@@ -426,12 +619,16 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
         memcpy(&(*response_buf)[*len], temp_buf, n);
         *len = *len + n;
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-        if ((n < 0) && (errno != 11)) {
+        if ((n < 0) && (errno != EAGAIN)) {
           return 1;
         }
       }   
     }
-  } else if (rv < 0) return 1;
+  } else 
+    if (rv < 0) // an error was returned 
+      return 1;
+ 
+  // rv == 0 poll timeout or all data pending after poll has been received successfully
   return 0;
 }
 
@@ -582,3 +779,20 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
   return out;
 }
 
+
+void hexdump(unsigned char *msg, unsigned char * buf, int start, int end) {
+  printf("%s : ", msg);
+  for (int i=start; i<=end; i++) {
+    printf("%02x", buf[i]);
+  }
+  printf("\n");
+}
+
+
+u32 read_bytes_to_uint32(unsigned char* buf, unsigned int offset, int num_bytes) {
+  u32 val = 0;
+  for (int i=0; i<num_bytes; i++) {
+    val = (val << 8) + buf[i+offset];
+  }
+  return val;
+}

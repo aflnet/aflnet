@@ -12,6 +12,9 @@ unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_siz
 1. Path to the test case (e.g., crash-triggering input)
 2. Application protocol (e.g., RTSP, FTP)
 3. Server's network port
+Optional:
+4. First response timeout (ms), default 1
+5. Follow-up responses timeout (us), default 1000
 */
 
 int main(int argc, char* argv[])
@@ -23,14 +26,29 @@ int main(int argc, char* argv[])
   int response_buf_size = 0;
   unsigned int size, i, state_count, packet_count = 0;
   unsigned int *state_sequence;
+  unsigned int socket_timeout = 1000;
+  unsigned int poll_timeout = 1;
+
+
+  if (argc < 4) {
+    PFATAL("Usage: ./aflnet-replay packet_file protocol port [first_resp_timeout(us) [follow-up_resp_timeout(ms)]]");
+  }
 
   fp = fopen(argv[1],"rb");
 
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
+  else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[3]); exit(1);}
 
   portno = atoi(argv[3]);
+
+  if (argc > 4) {
+    poll_timeout = atoi(argv[4]);
+    if (argc > 5) {
+      socket_timeout = atoi(argv[5]);
+    }
+  }
 
   //Wait for the server to initialize
   usleep(server_wait_usecs);
@@ -41,7 +59,12 @@ int main(int argc, char* argv[])
     response_buf_size = 0;
   }
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd; 
+  if (!strcmp(argv[2], "DTLS12")) {
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+  } else {
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  }
   
   if (sockfd < 0) {
     PFATAL("Cannot create a socket");
@@ -50,8 +73,10 @@ int main(int argc, char* argv[])
   //Set timeout for socket data sending/receiving -- otherwise it causes a big delay
   //if the server is still alive after processing all the requests
   struct timeval timeout;
+
   timeout.tv_sec = 0;
-  timeout.tv_usec = 1000;
+  timeout.tv_usec = socket_timeout;
+  
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
@@ -84,11 +109,11 @@ int main(int argc, char* argv[])
       buf = (char *)ck_alloc(size);
       fread(buf, size, 1, fp);
       
-      if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) break;
+      if (net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size)) break;
       n = net_send(sockfd, timeout, buf,size);
       if (n != size) break;
 
-      if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) break;
+      if (net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size)) break;
     }
   }
 

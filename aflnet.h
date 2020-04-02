@@ -55,14 +55,16 @@ KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equa
 
 // Functions for extracting requests and responses
 
-/*To add support for a new application protocol, please add corresponding function declartion and implmentation
+/*To add support for a new application protocol, please add corresponding function declartion and implementation
 And update the code to handle -P option in the main function in afl-fuzz.c accordingly */
 unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 
 region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 extern region_t* (*extract_requests)(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 
 // Network communication functions
@@ -104,5 +106,11 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port);
 
 /* Convert state sequence to string */
 u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCount);
+
+/* Print the hexdump of a segment of a buffer preceded by a messsage */
+void hexdump(unsigned char *msg, unsigned char * buf, int start, int end);
+
+/* Reads a number of bytes from buf from offset into an unsigned int and returns it. May overflow*/
+u32 read_bytes_to_uint32(unsigned char* buf, unsigned int offset, int num_bytes);
 
 #endif /* __AFLNET_H */
