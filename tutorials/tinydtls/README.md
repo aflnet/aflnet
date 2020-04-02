@@ -3,7 +3,7 @@
     export WORKDIR=$(pwd)
     cd $WORKDIR
     
-    # fork de-randomized version of TinyDTLS commit 53a0d97 (the latest commit as of now)
+    # fork de-randomized version of TinyDTLS commit 094143f (the latest commit as of now)
     git clone git@github.com:assist-project/tinydtls-fuzz.git tinydtls
     
     # building de-randomized version 
