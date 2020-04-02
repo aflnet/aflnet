@@ -13,7 +13,8 @@ unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_siz
 2. Application protocol (e.g., RTSP, FTP)
 3. Server's network port
 Optional:
-4. Response timeout (us), default 1000
+4. First response timeout (ms), default 1
+5. Follow-up responses timeout (us), default 1000
 */
 
 int main(int argc, char* argv[])
@@ -25,11 +26,12 @@ int main(int argc, char* argv[])
   int response_buf_size = 0;
   unsigned int size, i, state_count, packet_count = 0;
   unsigned int *state_sequence;
-  unsigned int supplied_timeout = 0;
+  unsigned int socket_timeout = 1000;
+  unsigned int poll_timeout = 1;
 
 
   if (argc < 4) {
-    PFATAL("Usage: ./aflnet-replay packet_file protocol port [timeout(us)]");
+    PFATAL("Usage: ./aflnet-replay packet_file protocol port [first_resp_timeout(us) [follow-up_resp_timeout(ms)]]");
   }
 
   fp = fopen(argv[1],"rb");
@@ -42,7 +44,10 @@ int main(int argc, char* argv[])
   portno = atoi(argv[3]);
 
   if (argc > 4) {
-    supplied_timeout = atoi(argv[4]);
+    poll_timeout = atoi(argv[4]);
+    if (argc > 5) {
+      socket_timeout = atoi(argv[5]);
+    }
   }
 
   //Wait for the server to initialize
@@ -70,13 +75,7 @@ int main(int argc, char* argv[])
   struct timeval timeout;
 
   timeout.tv_sec = 0;
-  if (!supplied_timeout) {
-    timeout.tv_usec = 1000;
-  }
-  else
-  {
-    timeout.tv_usec = supplied_timeout;
-  }
+  timeout.tv_usec = socket_timeout;
   
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
@@ -110,11 +109,11 @@ int main(int argc, char* argv[])
       buf = (char *)ck_alloc(size);
       fread(buf, size, 1, fp);
       
-      if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) break;
+      if (net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size)) break;
       n = net_send(sockfd, timeout, buf,size);
       if (n != size) break;
 
-      if (net_recv(sockfd, timeout, 1, &response_buf, &response_buf_size)) break;
+      if (net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size)) break;
     }
   }
 
