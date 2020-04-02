@@ -45,18 +45,18 @@ We use custom types for cases where the types cannot be determined due to (suspe
 
 A status code is computed as follows:
 
-  status_code = (content_type << 8) + message_type;
+    status_code = (content_type << 8) + message_type;
 
 The status_code is presented in decimal format in the ipsm which blurs its structure.
 This can be amended by using its hex representation, in which the first 2 letters correspond to content_type and the next two to the message_type.
 These represenation can be obtained by running:
 
-  printf '%x' status_code
+    printf '%x' status_code
 
 If the status_code is 5635 this will yield 1603, which can be interpreted:
 
-  16 - Handshake Content Type
-  03 - Hello Verify Request Message Type
+  - 16 - Handshake Content Type
+  - 03 - Hello Verify Request Message Type
 
 For more detail on mapping DTLS 1.2 fields to types view the [TLS 1.2] and [DTLS 1.2] standards.
 
