@@ -601,6 +601,7 @@ void update_fuzzs() {
       }
     }
   }
+  ck_free(state_sequence);
   kh_destroy(hs32, khs_state_ids);
 }
 
@@ -808,7 +809,7 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 		    from = agnode(ipsm, fromState, FALSE);
 		    if (!from) {
           //Add a node to the graph
-          from = agnode(ipsm, strdup(fromState), TRUE);
+          from = agnode(ipsm, fromState, TRUE);
           if (dry_run) agset(from,"color","blue");
           else agset(from,"color","red");
   
@@ -838,7 +839,7 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 		    to = agnode(ipsm, toState, FALSE);
 		    if (!to) {
           //Add a node to the graph
-          to = agnode(ipsm, strdup(toState), TRUE);
+          to = agnode(ipsm, toState, TRUE);
           if (dry_run) agset(to,"color","blue");
           else agset(to,"color","red");
 
@@ -5415,7 +5416,8 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
     }
 
     if (i == max_seed_region_count) break;
-  }  
+  }
+  ck_free(regions);
 
   cur_last_message = get_last_message(kl_messages);
 
@@ -7596,6 +7598,8 @@ abandon_entry:
   if (in_buf != orig_in) ck_free(in_buf);
   ck_free(out_buf);
   ck_free(eff_map);
+
+  delete_kl_messages(kl_messages);
 
   return ret_val;
 
