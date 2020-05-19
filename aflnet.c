@@ -13,6 +13,78 @@
 
 // Protocol-specific functions for extracting requests and responses
 
+region_t* extract_requests_dns(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+{
+  char *mem;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+
+  mem = (char *)ck_alloc(mem_size);
+
+  unsigned int cur_start = 0;
+  unsigned int cur_end = 0;
+  for (unsigned int byte_count = 0; byte_count < buf_size; byte_count++) {
+    memcpy(&mem[mem_count], buf + byte_count, 1);
+
+    // A DNS header is 12 bytes long & the 1st null byte after that indicates the end of the query.
+    if ((mem_count >= 12) && (*(mem+mem_count) == 0)) {
+      // 4 bytes left of the tail.
+      cur_end += 4;
+      byte_count += 4;
+      region_count++;
+      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+      regions[region_count - 1].start_byte = cur_start;
+      regions[region_count - 1].end_byte = cur_end;
+      regions[region_count - 1].state_sequence = NULL;
+      regions[region_count - 1].state_count = 0;
+
+      if (cur_end == buf_size - 1) break;
+
+      mem_count = 0;
+      cur_start = cur_end + 1;
+      cur_end = cur_start;
+    } else {
+      mem_count++;
+      cur_end++;
+
+      // Check if the last byte has been reached
+      if (cur_end == buf_size - 1) {
+        region_count++;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = cur_end;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+        break;
+      }
+
+      if (mem_count == mem_size) {
+        // Enlarge the mem buffer
+        mem_size *= 2;
+        mem = (char *)ck_realloc(mem, mem_size);
+      }
+    }
+  }
+  if (mem) ck_free(mem);
+
+  // In case region_count equals zero, it means that the structure of the buffer is broken
+  // hence we create one region for the whole buffer
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+
+    region_count = 1;
+  }
+
+  *region_count_ref = region_count;
+  return regions;
+}
+
 region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
 {
   char *mem;
@@ -27,8 +99,8 @@ region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsig
 
   unsigned int cur_start = 0;
   unsigned int cur_end = 0;
-  while (byte_count < buf_size) { 
-    
+  while (byte_count < buf_size) {
+
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
     //Check if the last four bytes are 0x0D0A0D0A
@@ -39,13 +111,13 @@ region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsig
       regions[region_count - 1].end_byte = cur_end;
       regions[region_count - 1].state_sequence = NULL;
       regions[region_count - 1].state_count = 0;
-        
-      mem_count = 0;  
+
+      mem_count = 0;
       cur_start = cur_end + 1;
       cur_end = cur_start;
     } else {
-      mem_count++; 
-      cur_end++;  
+      mem_count++;
+      cur_end++;
 
       //Check if the last byte has been reached
       if (cur_end == buf_size - 1) {
@@ -67,7 +139,7 @@ region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsig
   }
   if (mem) ck_free(mem);
 
-  //in case region_count equals zero, it means that the structure of the buffer is broken 
+  //in case region_count equals zero, it means that the structure of the buffer is broken
   //hence we create one region for the whole buffer
   if ((region_count == 0) && (buf_size > 0)) {
     regions = (region_t *)ck_realloc(regions, sizeof(region_t));
@@ -78,14 +150,14 @@ region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsig
 
     region_count = 1;
   }
-  
+
   *region_count_ref = region_count;
   return regions;
 }
 
 region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
 {
-   char *mem;
+  char *mem;
   unsigned int byte_count = 0;
   unsigned int mem_count = 0;
   unsigned int mem_size = 1024;
@@ -97,8 +169,8 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
 
   unsigned int cur_start = 0;
   unsigned int cur_end = 0;
-  while (byte_count < buf_size) { 
-    
+  while (byte_count < buf_size) {
+
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
     //Check if the last two bytes are 0x0D0A
@@ -109,13 +181,13 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
       regions[region_count - 1].end_byte = cur_end;
       regions[region_count - 1].state_sequence = NULL;
       regions[region_count - 1].state_count = 0;
-        
-      mem_count = 0;  
+
+      mem_count = 0;
       cur_start = cur_end + 1;
       cur_end = cur_start;
     } else {
-      mem_count++; 
-      cur_end++;  
+      mem_count++;
+      cur_end++;
 
       //Check if the last byte has been reached
       if (cur_end == buf_size - 1) {
@@ -137,7 +209,7 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   }
   if (mem) ck_free(mem);
 
-  //in case region_count equals zero, it means that the structure of the buffer is broken 
+  //in case region_count equals zero, it means that the structure of the buffer is broken
   //hence we create one region for the whole buffer
   if ((region_count == 0) && (buf_size > 0)) {
     regions = (region_t *)ck_realloc(regions, sizeof(region_t));
@@ -148,10 +220,56 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
 
     region_count = 1;
   }
-  
+
   *region_count_ref = region_count;
   return regions;
 }
+
+/*
+unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  char *mem;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+
+  mem=(char *)ck_alloc(mem_size);
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  for (unsigned int byte_count = 0; byte_count < buf_size; byte_count++) {
+    memcpy(&mem[mem_count], buf + byte_count, 1);
+
+    // The original query will be included with the response.
+    if ((mem_count >= 12) && (*(mem+mem_count) == 0)) {
+      // 4 bytes left of the query. Jump to the answer.
+      byte_count += 5;
+      mem_count += 5;
+
+      // Save the 3rd & 4th bytes as the response code
+      unsigned int message_code = (unsigned int) ((mem[2] << 8) + mem[3]);
+
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = message_code;
+      mem_count = 0;
+    } else {
+      mem_count++;
+      if (mem_count == mem_size) {
+        //enlarge the mem buffer
+        mem_size = mem_size * 2;
+        mem=(char *)ck_realloc(mem, mem_size);
+      }
+    }
+  }
+  if (mem) ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+*/
 
 static unsigned char dtls12_version[2] = {0xFE, 0xFD};
 
@@ -178,11 +296,11 @@ region_t *extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, uns
 
   unsigned int cur_start = 0;
 
-   while (byte_count < buf_size) { 
+   while (byte_count < buf_size) {
 
      //Check if the first three bytes are <valid_content_type><dtls-1.2>
-     if ((byte_count > 3 && buf_size - byte_count > 1) && 
-     (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  && 
+     if ((byte_count > 3 && buf_size - byte_count > 1) &&
+     (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  &&
      (memcmp(&buf[byte_count+1], dtls12_version, 2) == 0)) {
        region_count++;
        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
@@ -191,7 +309,7 @@ region_t *extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, uns
        regions[region_count - 1].state_sequence = NULL;
        regions[region_count - 1].state_count = 0;
        cur_start = byte_count;
-     } else { 
+     } else {
 
       //Check if the last byte has been reached
       if (byte_count == buf_size - 1) {
@@ -208,7 +326,7 @@ region_t *extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, uns
      byte_count ++;
   }
 
-  //in case region_count equals zero, it means that the structure of the buffer is broken 
+  //in case region_count equals zero, it means that the structure of the buffer is broken
   //hence we create one region for the whole buffer
   if ((region_count == 0) && (buf_size > 0)) {
     regions = (region_t *)ck_realloc(regions, sizeof(region_t));
@@ -219,15 +337,15 @@ region_t *extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, uns
 
     region_count = 1;
   }
-  
+
   *region_count_ref = region_count;
   return regions;
 }
 
 // a status code comprises <content_type, message_type> tuples
 // message_type varies depending on content_type (e.g. for handshake content, message_type is the handshake message type...)
-// 
-unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) 
+//
+unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   unsigned int byte_count = 0;
   unsigned int *state_sequence = NULL;
@@ -241,12 +359,12 @@ unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf
   while (byte_count < buf_size) {
     // a DTLS 1.2 record has a 13 bytes header, followed by the contained message
     if ( (buf_size - byte_count > 13) &&
-    (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  && 
+    (buf[byte_count] >= CCS_CONTENT_TYPE && buf[byte_count] <= HEARTBEAT_CONTENT_TYPE)  &&
     (memcmp(&buf[byte_count+1], dtls12_version, 2) == 0)) {
       unsigned char content_type = buf[byte_count];
       unsigned char message_type;
       u32 record_length = read_bytes_to_uint32(buf, byte_count+11, 2);
-      
+
       // the record length exceeds buffer boundaries (not expected)
       if (buf_size - byte_count - 13 - record_length < 0) {
         message_type = MALFORMED_MESSAGE_TYPE;
@@ -258,9 +376,9 @@ unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf
             // the minimum size of a correct DTLS 1.2 handshake message is 12 bytes comprising fragment header fields
             if (record_length >= 12) {
               u32 frag_length = read_bytes_to_uint32(buf, byte_count+22, 3);
-              // we can check if the handshake record is encrypted by subtracting fragment length from record length 
+              // we can check if the handshake record is encrypted by subtracting fragment length from record length
               // which should yield 12 if the fragment is not encrypted
-              // the likelyhood for an encrypted fragment to satisfy this condition is very small 
+              // the likelyhood for an encrypted fragment to satisfy this condition is very small
               if (record_length - frag_length == 12) {
                 // not encrypted
                 message_type = hs_msg_type;
@@ -362,7 +480,7 @@ unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_s
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0;
 
-  while (byte_count < buf_size) { 
+  while (byte_count < buf_size) {
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
     //Check if the last two bytes are 0x0D0A
@@ -384,7 +502,7 @@ unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_s
         mem_count = 0;
       }
     } else {
-      mem_count++;   
+      mem_count++;
       if (mem_count == mem_size) {
         //enlarge the mem buffer
         mem_size = mem_size * 2;
@@ -413,7 +531,7 @@ unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_si
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0;
 
-  while (byte_count < buf_size) { 
+  while (byte_count < buf_size) {
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
     if ((mem_count > 0) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0)) {
@@ -430,7 +548,7 @@ unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_si
       state_sequence[state_count - 1] = message_code;
       mem_count = 0;
     } else {
-      mem_count++;   
+      mem_count++;
       if (mem_count == mem_size) {
         //enlarge the mem buffer
         mem_size = mem_size * 2;
@@ -445,12 +563,12 @@ unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_si
 
 // kl_messages manipulating functions
 
-klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_count) 
+klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_count)
 {
   FILE *fseed = NULL;
-  fseed = fopen(fname, "rb"); 
+  fseed = fopen(fname, "rb");
   if (fseed == NULL) PFATAL("Cannot open seed file %s", fname);
-  
+
   klist_t(lms) *kl_messages = kl_init(lms);
   u32 i;
 
@@ -461,8 +579,8 @@ klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_cou
     //Create a new message
     message_t *m = (message_t *) ck_alloc(sizeof(message_t));
     m->mdata = (char *) ck_alloc(len);
-    m->msize = len;  
-    if (m->mdata == NULL) PFATAL("Unable to allocate memory region to store new message");          
+    m->msize = len;
+    if (m->mdata == NULL) PFATAL("Unable to allocate memory region to store new message");
     fread(m->mdata, 1, len, fseed);
 
     //Insert the message to the linked list
@@ -473,11 +591,11 @@ klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_cou
   return kl_messages;
 }
 
-void delete_kl_messages(klist_t(lms) *kl_messages) 
-{ 
+void delete_kl_messages(klist_t(lms) *kl_messages)
+{
   /* Free all messages in the list before destroying the list itself */
   message_t *m;
-  
+
   int ret = kl_shift(lms, kl_messages, &m);
   while (ret == 0) {
     if (m) {
@@ -486,12 +604,12 @@ void delete_kl_messages(klist_t(lms) *kl_messages)
     }
     ret = kl_shift(lms, kl_messages, &m);
   }
-  
+
   /* Finally, destroy the list */
 	kl_destroy(lms, kl_messages);
 }
 
-kliter_t(lms) *get_last_message(klist_t(lms) *kl_messages) 
+kliter_t(lms) *get_last_message(klist_t(lms) *kl_messages)
 {
   kliter_t(lms) *it;
   it = kl_begin(kl_messages);
@@ -502,7 +620,7 @@ kliter_t(lms) *get_last_message(klist_t(lms) *kl_messages)
 }
 
 
-u32 save_kl_messages_to_file(klist_t(lms) *kl_messages, u8 *fname, u8 replay_enabled, u32 max_count) 
+u32 save_kl_messages_to_file(klist_t(lms) *kl_messages, u8 *fname, u8 replay_enabled, u32 max_count)
 {
   u8 *mem = NULL;
   u32 len = 0, message_size = 0;
@@ -522,18 +640,18 @@ u32 save_kl_messages_to_file(klist_t(lms) *kl_messages, u8 *fname, u8 replay_ena
       u32 *psize = (u32*)&mem[len];
       *psize = message_size;
 
-      //Save packet content 
+      //Save packet content
       memcpy(&mem[len + 4], kl_val(it)->mdata, message_size);
       len = 4 + len + message_size;
     } else {
       mem = (u8 *)ck_realloc(mem, len + message_size);
 
-      //Save packet content 
+      //Save packet content
       memcpy(&mem[len], kl_val(it)->mdata, message_size);
       len = len + message_size;
     }
     message_count++;
-  }  
+  }
 
   //Write everything to file & close the file
   ck_write(fd, mem, len, fname);
@@ -545,7 +663,7 @@ u32 save_kl_messages_to_file(klist_t(lms) *kl_messages, u8 *fname, u8 replay_ena
   return len;
 }
 
-region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_count_ref, u32 max_count) 
+region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_count_ref, u32 max_count)
 {
   region_t *regions = NULL;
   kliter_t(lms) *it;
@@ -563,12 +681,12 @@ region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_
     regions[region_count - 1].end_byte = cur_end;
     regions[region_count - 1].state_sequence = NULL;
     regions[region_count - 1].state_count = 0;
-    
+
     cur_start = cur_end + 1;
     region_count++;
-  }  
-  
-  *region_count_ref = region_count - 1; 
+  }
+
+  *region_count_ref = region_count - 1;
   return regions;
 }
 
@@ -577,10 +695,10 @@ region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_
 int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
   unsigned int byte_count = 0;
   int n;
-  struct pollfd pfd[1]; 
+  struct pollfd pfd[1];
   pfd[0].fd = sockfd;
   pfd[0].events = POLLOUT;
-  int rv = poll(pfd, 1, 1);  
+  int rv = poll(pfd, 1, 1);
 
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
   if (rv > 0) {
@@ -600,11 +718,11 @@ int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
 int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf, unsigned int *len) {
   char temp_buf[1000];
   int n;
-  struct pollfd pfd[1]; 
+  struct pollfd pfd[1];
   pfd[0].fd = sockfd;
   pfd[0].events = POLLIN;
   int rv = poll(pfd, 1, poll_w);
-  
+
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
   // data received
   if (rv > 0) {
@@ -622,12 +740,12 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
         if ((n < 0) && (errno != EAGAIN)) {
           return 1;
         }
-      }   
+      }
     }
-  } else 
-    if (rv < 0) // an error was returned 
+  } else
+    if (rv < 0) // an error was returned
       return 1;
- 
+
   // rv == 0 poll timeout or all data pending after poll has been received successfully
   return 0;
 }
@@ -640,7 +758,7 @@ void save_regions_to_file(region_t *regions, unsigned int region_count, unsigned
   FILE* fp;
 
   fd = open(fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
-  
+
   if (fd < 0) return;
 
   fp = fdopen(fd, "w");
@@ -651,7 +769,7 @@ void save_regions_to_file(region_t *regions, unsigned int region_count, unsigned
   }
 
   int i;
-  
+
   for(i=0; i < region_count; i++) {
      fprintf(fp, "Region %d - Start: %d, End: %d\n", i, regions[i].start_byte, regions[i].end_byte);
   }
@@ -712,7 +830,7 @@ void str_rtrim(char* a_str)
 	}
 }
 
-int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port) 
+int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
 {
   char  buf[80];
   char **tokens;
@@ -724,7 +842,7 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
 
   strncpy(buf, net_config, strlen(net_config));
    str_rtrim(buf);
-      
+
   if (!str_split(buf, "/", tokens, tokenCount))
   {
       if (!strcmp(tokens[0], "tcp:")) {
@@ -744,9 +862,9 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
 
 u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCount) {
   u32 i = 0;
- 
+
   u8 *out = NULL;
-  
+
   char strState[10];
   int len = 0;
   for (i = 0; i < stateCount; i++) {

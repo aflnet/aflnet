@@ -50,7 +50,7 @@ KLIST_INIT(lms, message_t *, message_t_freer)
 
 KHASH_SET_INIT_INT(hs32)
 
-// Initialize a hash table with int key and value is of type state_info_t 
+// Initialize a hash table with int key and value is of type state_info_t
 KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equal)
 
 // Functions for extracting requests and responses
@@ -58,11 +58,13 @@ KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equa
 /*To add support for a new application protocol, please add corresponding function declartion and implementation
 And update the code to handle -P option in the main function in afl-fuzz.c accordingly */
 unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 
 region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+//region_t* extract_requests_dns(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 extern region_t* (*extract_requests)(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
@@ -102,7 +104,7 @@ int str_split(char* a_str, const char* a_delim, char **result, int a_count);
 void str_rtrim(char* a_str);
 
 /* Parse user provided server information to get IP address, transport protocol (TCP/UDP) and port number */
-int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port); 
+int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port);
 
 /* Convert state sequence to string */
 u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCount);
