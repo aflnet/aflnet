@@ -8960,7 +8960,7 @@ int main(int argc, char** argv) {
           extract_response_codes = &extract_response_codes_dtls12;
         } else if (!strcmp(optarg, "DNS")) {
           extract_requests = &extract_requests_dns;
-          //extract_response_codes = &extract_response_codes_dns;
+          extract_response_codes = &extract_response_codes_dns;
         } else
 
         FATAL("%s protocol is not supported yet!", optarg);

@@ -225,7 +225,6 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
-/*
 unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -269,7 +268,6 @@ unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_si
   *state_count_ref = state_count;
   return state_sequence;
 }
-*/
 
 static unsigned char dtls12_version[2] = {0xFE, 0xFD};
 

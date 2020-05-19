@@ -38,6 +38,7 @@ int main(int argc, char* argv[])
 
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
+  else if (!strcmp(argv[2], "DNS")) extract_response_codes = &extract_response_codes_dns;
   else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[3]); exit(1);}
 
@@ -54,35 +55,35 @@ int main(int argc, char* argv[])
   usleep(server_wait_usecs);
 
   if (response_buf) {
-    ck_free(response_buf); 
+    ck_free(response_buf);
     response_buf = NULL;
     response_buf_size = 0;
   }
 
-  int sockfd; 
+  int sockfd;
   if (!strcmp(argv[2], "DTLS12")) {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   } else {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
   }
-  
+
   if (sockfd < 0) {
     PFATAL("Cannot create a socket");
   }
- 
+
   //Set timeout for socket data sending/receiving -- otherwise it causes a big delay
   //if the server is still alive after processing all the requests
   struct timeval timeout;
 
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout;
-  
+
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
 
-  serv_addr.sin_family = AF_INET;        
-  serv_addr.sin_port = htons(portno);    
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(portno);
   serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
@@ -93,11 +94,11 @@ int main(int argc, char* argv[])
       usleep(1000);
     }
     if (n== 1000) {
-      close(sockfd); 
+      close(sockfd);
       return 1;
     }
   }
-  
+
   //Send requests one by one
   //And save all the server responses
   while(!feof(fp)) {
@@ -108,7 +109,7 @@ int main(int argc, char* argv[])
 
       buf = (char *)ck_alloc(size);
       fread(buf, size, 1, fp);
-      
+
       if (net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size)) break;
       n = net_send(sockfd, timeout, buf,size);
       if (n != size) break;
@@ -125,7 +126,7 @@ int main(int argc, char* argv[])
 
   fprintf(stderr,"\n--------------------------------");
   fprintf(stderr,"\nResponses from server:");
-  
+
   for (i = 0; i < state_count; i++) {
     fprintf(stderr,"%d-",state_sequence[i]);
   }
@@ -139,7 +140,7 @@ int main(int argc, char* argv[])
   //Free memory
   ck_free(state_sequence);
   if (buf) ck_free(buf);
-  ck_free(response_buf); 
+  ck_free(response_buf);
 
   return 0;
 }
