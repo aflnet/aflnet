@@ -5456,7 +5456,7 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   fault = run_target(argv, exec_tmout);
 
   //Update fuzz count, no matter whether the generated test is interesting or not
-  update_fuzzs();
+  if (state_aware_mode) update_fuzzs();
 
   if (stop_soon) return 1;
 
