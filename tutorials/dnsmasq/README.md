@@ -1,6 +1,6 @@
 # Tutorial - Fuzzing Dnsmasq server
 
-We assume that you have read the AFLNet README.md which includes a detailed tutorial for fuzzing Live555 RTSP server before reading this tutorial.
+This assumes that you have read the AFLNet README.md, which includes a detailed tutorial for fuzzing the Live555 RTSP server, before reading this tutorial.
 
 ## Step-0. Server compilation & setup
 
@@ -32,11 +32,11 @@ Once Dnsmasq has been successfully compiled, we can test the server by adding an
 # Add an address to resolve
 echo address=/test.com/5.5.5.5 | sudo tee -a /etc/dnsmasq.conf
 # Run Dnsmasq and don't daemonize (the dnsmasq.conf file will specify port 5353)
-./dnsmasq --no-daemon
+./dnsmasq
 ```
 
-Now we can use `dig` to qery the test.com domain:
-```bash
+Now we can use `dig` to query the test.com domain:
+```
 dig @127.0.0.1 -p 5353 test.com
 
 ; <<>> DiG 9.11.3-1ubuntu1.12-Ubuntu <<>> @127.0.0.1 -p 5353 test.com
@@ -66,7 +66,7 @@ Various DNS queries have been recorded and saved in the `aflnet/tutorials/dnsmas
 
 ```bash
 cd $WORKDIR/dnsmasq/src
-afl-fuzz -d -i $AFLNET/tutorials/dnsmasq/in-dns -o out-dns -N tcp://127.0.0.1/5353 -P DNS -D 10000 -K -R ./dnsmasq --no-daemon
+afl-fuzz -d -i $AFLNET/tutorials/dnsmasq/in-dns -o out-dns -N tcp://127.0.0.1/5353 -P DNS -D 10000 -K -R ./dnsmasq
 ```
 
 With this particular version of Dnsmasq (v2.73rc6), you should get a few crash after waiting long enough.
