@@ -9,6 +9,8 @@ afl-gcc
 afl-gotcpu
 afl-showmap
 afl-tmin
+aflnet-replay
+aflnet.o
 as
 
 # Binaries produced by "make -C llvm_mode"
