@@ -8961,6 +8961,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "DNS")) {
           extract_requests = &extract_requests_dns;
           extract_response_codes = &extract_response_codes_dns;
+        } else if (!strcmp(optarg, "DICOM")) {
+          extract_requests = &extract_requests_dicom;
+          extract_response_codes = &extract_response_codes_dicom;
         } else
 
         FATAL("%s protocol is not supported yet!", optarg);

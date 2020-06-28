@@ -13,6 +13,63 @@
 
 // Protocol-specific functions for extracting requests and responses
 
+region_t* extract_requests_dicom(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+{
+  unsigned int pdu_length = 0;
+  unsigned int packet_length = 0;
+  unsigned int region_count = 0;
+  unsigned int end = 0;
+  unsigned int start = 0;
+
+  region_t *regions = NULL;
+
+  unsigned int byte_count = 0;
+  while (byte_count < buf_size) {
+
+    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break; 
+    
+    // Bytes from third to sixth encode the PDU length.
+    pdu_length = 
+      (buf[byte_count + 5]) | 
+      (buf[byte_count + 4] << 8)  | 
+      (buf[byte_count + 3] << 16) | 
+      (buf[byte_count + 2] << 24);
+
+    // DICOM Header(6 bytes) includes PDU type and PDU length.
+    packet_length = pdu_length + 6;
+
+    start = byte_count;
+    end = byte_count + packet_length - 1;
+
+    if (end < start) break; // it means that int overflow has happened -_0_0_-
+    if (end >= buf_size) break; // checking boundaries
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = start;
+    regions[region_count - 1].end_byte = end;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    if ( (byte_count + packet_length) < byte_count ) break; // checking int overflow
+    if ( (byte_count + packet_length) < packet_length ) break; // checking int overflow
+    byte_count += packet_length;
+  }
+
+  // if bytes is left
+  if ((byte_count < buf_size) && (buf_size > 0)) {
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = byte_count;
+    regions[region_count - 1].end_byte = buf_size - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+  }
+
+  *region_count_ref = region_count;
+  return regions;
+}
+
 region_t* extract_requests_dns(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
 {
   char *mem;
@@ -224,6 +281,29 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   *region_count_ref = region_count;
   return regions;
 }
+
+unsigned int* extract_response_codes_dicom(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  if (buf_size == 0) {
+    *state_count_ref = 0;
+    return NULL;
+  }
+
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0; // initial status code is 0
+
+  state_count++;
+  unsigned int message_code = buf[0]; // return PDU type as status code
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = message_code;
+
+  *state_count_ref = state_count;
+  return state_sequence;
+};
 
 unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
