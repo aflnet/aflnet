@@ -38,9 +38,8 @@ To setup `dcmqrscp` server follow commands:
     ```bash
     cd $WORKDIR/dcmtk/build/bin
 
-    # Create directories for DICOM database
-    mkdir COMMON ACME_STORE UNITED_STORE
-    chmod 777 -R ACME_STORE/ COMMON/ UNITED_STORE/ # I couldn't set lower permissions :(
+    # Create directory for DICOM database
+    mkdir ACME_STORE
     ```
 
 - Create configuration file:
@@ -48,12 +47,12 @@ To setup `dcmqrscp` server follow commands:
     cp $AFLNET/tutorials/dcmqrscp/dcmqrscp.cfg ./
     ```
 
-    Fix paths to `COMMON` `ACME_STORE` `UNITED_STORE` directories in configuration file `dcmqrscp.cfg`(lines: 79, 80, 81).
+    Fix paths to `ACME_STORE` directory in configuration file `dcmqrscp.cfg`(line: 69).
 
 - Start `dcmqrscp`.
     ```bash
     export DCMDICTPATH=$WORKDIR/dcmtk/dcmdata/data/dicom.dic
-    sudo -E ./dcmqrscp
+    ./dcmqrscp
     ```
 
  - Check that everything works correctly:
@@ -63,10 +62,10 @@ To setup `dcmqrscp` server follow commands:
     sudo apt install dcmtk
 
     # Test connection:
-    echoscu -v localhost 104
-    storescu -v localhost 104 $AFLNET/tutorials/dcmqrscp/test.dcm
-    findscu -P localhost 104 $AFLNET/tutorials/dcmqrscp/query.dcm
-    getscu localhost 104 $AFLNET/tutorials/dcmqrscp/query.dcm
+    echoscu -v localhost 5158
+    storescu -v localhost 5158 $AFLNET/tutorials/dcmqrscp/test.dcm
+    findscu -P localhost 5158 $AFLNET/tutorials/dcmqrscp/query.dcm
+    getscu localhost 5158 $AFLNET/tutorials/dcmqrscp/query.dcm
     ```
 
     If everything works correctly, `dcmqrscp` won't write any logs.
@@ -78,7 +77,7 @@ You can find various DICOM queries to use as seed inputs in the `aflnet/tutorial
 
 ```bash
 cd $WORKDIR/dcmtk/build/bin
-sudo -E $AFLNET/afl-fuzz -d -i $AFLNET/tutorials/dcmqrscp/in-dicom -o out-dicom -N tcp://127.0.0.1/104 -P DICOM -D 10000 -E -K -R ./dcmqrscp
+afl-fuzz -d -i $AFLNET/tutorials/dcmqrscp/in-dicom -o out-dicom -N tcp://127.0.0.1/5158 -P DICOM -D 10000 -E -K -R ./dcmqrscp
 ```
 
 With this particular version of `dcmqrscp`, you should get a few crashes after waiting long enough.
