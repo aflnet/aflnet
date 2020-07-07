@@ -1,0 +1,27 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 028e1d171..b225af814 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,9 @@
+ # Minimum CMake version required
+ cmake_minimum_required(VERSION 2.8.5 FATAL_ERROR)
+ 
++SET(CMAKE_C_COMPILER afl-clang-fast)
++SET(CMAKE_CXX_COMPILER afl-clang-fast++)
++
+ # As of 2018-12-26 DCMTK has been validated to build with CMake 3.13.2 policies.
+ set(DCMTK_MAX_CMAKE_POLICY_VERSION 3.13.2)
+ 
+diff --git a/dcmqrdb/apps/dcmqrscp.cc b/dcmqrdb/apps/dcmqrscp.cc
+index 591fb1ff4..3f2539036 100644
+--- a/dcmqrdb/apps/dcmqrscp.cc
++++ b/dcmqrdb/apps/dcmqrscp.cc
+@@ -91,7 +91,7 @@ static char rcsid[] = "$dcmtk: " OFFIS_CONSOLE_APPLICATION " v"
+ 
+ #define APPLICATIONTITLE "DCMQRSCP"
+ 
+-const char *opt_configFileName = DEFAULT_CONFIGURATION_DIR "dcmqrscp.cfg";
++const char *opt_configFileName = "./dcmqrscp.cfg";
+ OFBool      opt_checkFindIdentifier = OFFalse;
+ OFBool      opt_checkMoveIdentifier = OFFalse;
+ OFCmdUnsignedInt opt_port = 0;
