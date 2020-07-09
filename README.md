@@ -35,7 +35,7 @@ sudo apt-get install graphviz-dev
 
 Download AFLNet and compile it. We have tested AFLNet on Ubuntu 18.04 and Ubuntu 16.04 64-bit and it would also work on all environments that support the vanilla AFL and [graphviz](https://graphviz.org).
 
-```
+```bash
 # First, clone this AFLNet repository to a folder named aflnet
 git clone <links to the repository> aflnet
 # Then move to the source code folder
@@ -67,7 +67,7 @@ AFLNet adds the following options to AFL. Run ```afl-fuzz --help``` to see all o
 
 - ***-P protocol***: application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS)
 
-- ***-D usec***: (optional) waiting time (in micro seconds) for the server to complete its initialization 
+- ***-D usec***: (optional) waiting time (in microseconds) for the server to complete its initialization 
 
 - ***-K*** : (optional) send SIGTERM signal to gracefully terminate the server after consuming all request messages
 
@@ -91,13 +91,13 @@ afl-fuzz -d -i in -o out -N <server info> -x <dictionary file> -P <protocol> -D 
 
 # Tutorial - Fuzzing Live555 media streaming server
 
-[Live555 Streaming Media](http://live555.com) is a C++ library for multimedia streaming. The library supports open protocols such as RTSP/RTCP and RTSP for streaming. It is used internally by widely-used media players such as [VLC](https://videolan.org) and [MPlayer](http://mplayerhq.hu) and some security cameras & network video recorders (e.g., [DLink D-View Cameras](http://files.dlink.com.au/products/D-ViewCam/REV_A/Manuals/Manual_v3.51/D-ViewCam_DCS-100_B1_Manual_v3.51(WW).pdf), [Senstar Symphony](http://cdn.aimetis.com/public/Library/Senstar%20Symphony%20User%20Guide%20en-US.pdf), [WISENET Video Recorder](https://www.eos.com.au/pub/media/doc/wisenet/Manuals_QRN-410S,QRN-810S,QRN-1610S_180802_EN.pdf)). In this example, we show how AFLNet can be used to fuzz Live555 and discover bugs in its RTSP server reference implementation (testOnDemandRTSPServer). Similar steps would be followed to fuzz servers implementing other protocols (e.g., FTP, SMTP, SSH).
+[Live555 Streaming Media](http://live555.com) is a C++ library for multimedia streaming. The library supports open protocols such as RTP/RTCP and RTSP for streaming. It is used internally by widely-used media players such as [VLC](https://videolan.org) and [MPlayer](http://mplayerhq.hu) and some security cameras & network video recorders (e.g., [DLink D-View Cameras](http://files.dlink.com.au/products/D-ViewCam/REV_A/Manuals/Manual_v3.51/D-ViewCam_DCS-100_B1_Manual_v3.51(WW).pdf), [Senstar Symphony](http://cdn.aimetis.com/public/Library/Senstar%20Symphony%20User%20Guide%20en-US.pdf), [WISENET Video Recorder](https://www.eos.com.au/pub/media/doc/wisenet/Manuals_QRN-410S,QRN-810S,QRN-1610S_180802_EN.pdf)). In this example, we show how AFLNet can be used to fuzz Live555 and discover bugs in its RTSP server reference implementation (testOnDemandRTSPServer). Similar steps would be followed to fuzz servers implementing other protocols (e.g., FTP, SMTP, SSH).
 
 If you want to run some experiments quickly, please use Dockerfiles stored in the corresponding [tutorial folders](tutorials).
 
 ## Step-0. Server and client compilation & setup
 
-The newest source code of Live555 can be downloaded as a tarball at [Live555 public page](http://live555.com/liveMedia/public/). There is also [a mirror of the library](https://github.com/rgaufman/live555) on Github. In this example, we choose to fuzz an [old version of Live555](https://github.com/rgaufman/live555/commit/ceeb4f462709695b145852de309d8cd25e2dca01) which was commited to the repository on August 28th, 2018. While fuzzing this specific version of Live555, AFLNet exposed four vulnerabilites in Live555, two of which were zero-day. To compile and setup Live555, please use the following commands.
+The newest source code of Live555 can be downloaded as a tarball at [Live555 public page](http://live555.com/liveMedia/public/). There is also [a mirror of the library](https://github.com/rgaufman/live555) on GitHub. In this example, we choose to fuzz an [old version of Live555](https://github.com/rgaufman/live555/commit/ceeb4f462709695b145852de309d8cd25e2dca01) which was commited to the repository on August 28th, 2018. While fuzzing this specific version of Live555, AFLNet exposed four vulnerabilites in Live555, two of which were zero-day. To compile and setup Live555, please use the following commands.
 
 ```bash
 cd $WORKDIR
@@ -225,7 +225,7 @@ If you want to support another protocol, all you need is to follow the steps bel
 
 #### Step-1. Implement 2 functions to parse the request and response sequences
 
-You can use the available extract_requests_* and extract_response_codes_* functions as references. These functions should be declared and implemented in aflnet.h and aflnet.c, respectively. Note that, please use the same function parameters.
+You can use the available ```extract_requests_*``` and ```extract_response_codes_*``` functions as references. These functions should be declared and implemented in [aflnet.h](aflnet.h) and [aflnet.c](aflnet.c), respectively. Note that, please use the same function parameters.
 
 #### Step-2. Update main function to support a new protocol
 
@@ -245,6 +245,6 @@ You may need to provide this option to keep network fuzzing more deterministic. 
 
 ## 4. What is false-negative reduction mode and when I should enable it using -F?
 
-Unlike stateless programs (e.g., image processing libraries like LibPNG), several stateful servers (e.g., the RTSP server in the above tutorial) do not terminate themselves after consuming all requests from the client, which is AFLNet in this fuzzing setup. So AFLNet needs to gracefully terminate the server by sending the SIGTERM signal (when -K is specified). Otherwise, AFLNet will detect normal server executions as hangs. However, the issue is that if AFLNet sends SIGTERM signal too early, say right after all request messages have been sent to the server, the server may be forced to terminate when it is still doing some tasks which may lead to server crashes (e.g., false negatives -- the server crashes are missed). The false-negative reduction mode is designed to handle such situations. However, it could slow down the fuzzing process leading to slower execution speed.
+Unlike stateless programs (e.g., image processing libraries like LibPNG), several stateful servers (e.g., the RTSP server in the above tutorial) do not terminate themselves after consuming all requests from the client, which is AFLNet in this fuzzing setup. So AFLNet needs to gracefully terminate the server by sending the SIGTERM signal (when -K is specified). Otherwise, AFLNet will detect normal server executions as hangs. However, the issue is that if AFLNet sends SIGTERM signal too early, say right after all request messages have been sent to the server, the server may be forced to terminate when it is still doing some tasks which may lead to server crashes (i.e., false negatives -- the server crashes are missed). The false-negative reduction mode is designed to handle such situations. However, it could slow down the fuzzing process leading to slower execution speed.
 
 

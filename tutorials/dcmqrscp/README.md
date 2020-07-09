@@ -6,7 +6,7 @@ This tutorial was tested on Ubuntu 18.04.
 
 ## Step-0. Server compilation
 
-You can download the source code of dcmqrscp from the [Official DCMTK Github Mirror](https://github.com/DCMTK/dcmtk).
+You can download the source code of dcmqrscp from the [Official DCMTK GitHub Mirror](https://github.com/DCMTK/dcmtk).
 In this example, we will fuzz a [specific version of dcmqrscp](https://github.com/DCMTK/dcmtk/commit/7f8564cf11e5531689dd329523fb16023aeda3ed). To compile and set up this version of `dcmqrscp` for fuzzing, please use the following commands.
 
 
