@@ -5894,8 +5894,8 @@ AFLNET_REGIONS_SELECTION:;
         if (regionalStateCount > 0) {
           //reachableStateID is the last ID in the state_sequence
           u32 reachableStateID = queue_cur->regions[i].state_sequence[regionalStateCount - 1];
-          if (reachableStateID == target_state_id) break;
           M2_start_region_ID++;
+          if (reachableStateID == target_state_id) break;
         } else {
           //No annotation for this region
           return 1;
