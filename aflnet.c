@@ -934,7 +934,7 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
 
       *port = atoi(tokens[2]);
       if (*port == 0) return 1;
-  }
+  } else return 1;
   return 0;
 }
 
