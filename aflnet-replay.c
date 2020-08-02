@@ -41,6 +41,9 @@ int main(int argc, char* argv[])
   else if (!strcmp(argv[2], "DNS")) extract_response_codes = &extract_response_codes_dns;
   else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else if (!strcmp(argv[2], "DICOM")) extract_response_codes = &extract_response_codes_dicom;
+  else if (!strcmp(argv[2], "SMTP")) extract_response_codes = &extract_response_codes_smtp;
+  else if (!strcmp(argv[2], "SSH")) extract_response_codes = &extract_response_codes_ssh;
+  else if (!strcmp(argv[2], "TLS")) extract_response_codes = &extract_response_codes_tls;
   else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
 
   portno = atoi(argv[3]);

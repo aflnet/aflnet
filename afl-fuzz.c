@@ -8964,9 +8964,18 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "DICOM")) {
           extract_requests = &extract_requests_dicom;
           extract_response_codes = &extract_response_codes_dicom;
-        } else
-
-        FATAL("%s protocol is not supported yet!", optarg);
+        } else if (!strcmp(optarg, "SMTP")) {
+          extract_requests = &extract_requests_smtp;
+          extract_response_codes = &extract_response_codes_smtp;
+        } else if (!strcmp(optarg, "SSH")) {
+          extract_requests = &extract_requests_ssh;
+          extract_response_codes = &extract_response_codes_ssh;
+        } else if (!strcmp(optarg, "TLS")) {
+          extract_requests = &extract_requests_tls;
+          extract_response_codes = &extract_response_codes_tls;
+        } else {
+          FATAL("%s protocol is not supported yet!", optarg);
+        }
 
         protocol_selected = 1;
 
