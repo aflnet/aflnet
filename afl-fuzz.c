@@ -359,7 +359,10 @@ u8 net_protocol;
 u8* net_ip;
 u32 net_port;
 char *response_buf = NULL;
-int response_buf_size = 0;
+int response_buf_size = 0; //the size of the whole response buffer
+u32 *response_bytes = NULL; //an array keeping accumulated response buffer size
+                            //e.g., response_bytes[i] keeps the response buffer size
+                            //once messages 0->i have been received and processed by the SUT
 u32 max_annotated_regions = 0;
 u32 target_state_id = 0;
 u32 *state_ids = NULL;
@@ -384,7 +387,6 @@ u8 terminate_child = 0;
 u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
-u8 is_annotating = 0;
 u8 state_selection_algo = ROUND_ROBIN, seed_selection_algo = RANDOM_SELECTION;
 u8 false_negative_reduction = 0;
 
@@ -514,36 +516,18 @@ u8 is_state_sequence_interesting(unsigned int *state_sequence, unsigned int stat
 /* Update the annotations of regions (i.e., state sequence received from the server) */
 void update_region_annotations(struct queue_entry* q)
 {
-  kliter_t(lms) *it;
-  max_annotated_regions = 0;
   u32 i = 0;
-  //Start the annotating process
-  is_annotating = 1;
 
-  //Since messages_sent is modified in send_over_network
-  //Save the original value here and restore it later
-  u32 saved_messages_sent = messages_sent;
-  for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && i < saved_messages_sent; it = kl_next(it)) {
-    max_annotated_regions++;
-    //Run the target which will call send_over_network
-    run_target(use_argv, exec_tmout);
-
-    //Analyze the responses stored in response_buf
-    if (response_buf == NULL) {
+  for (i = 0; i < messages_sent; i++) {
+    if ((response_bytes[i] == 0) || ( i > 0 && (response_bytes[i] - response_bytes[i - 1] == 0))) {
       q->regions[i].state_sequence = NULL;
       q->regions[i].state_count = 0;
     } else {
       unsigned int state_count;
-      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
+      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_bytes[i], &state_count);
       q->regions[i].state_count = state_count;
     }
-
-    i++;
   }
-  //End the annotating process
-  is_annotating = 0;
-  //Restore messages_sent value
-  messages_sent = saved_messages_sent;
 }
 
 /* Choose a region data for region-level mutations */
@@ -1021,6 +1005,11 @@ int send_over_network()
     response_buf_size = 0;
   }
 
+  if (response_bytes) {
+    ck_free(response_bytes);
+    response_bytes = NULL;
+  }
+
   //Create a TCP/UDP socket
   int sockfd = -1;
   if (net_protocol == PRO_TCP)
@@ -1066,13 +1055,12 @@ int send_over_network()
   messages_sent = 0;
 
   for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
-    //If region annotation updating is in progress, break if reaching the message number limit.
-    if (is_annotating) {
-      if (messages_sent >= max_annotated_regions) break;
-    }
-
     n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
     messages_sent++;
+
+    //Allocate memory to store new accumulated response buffer size
+    response_bytes = (u32 *) ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
     //Jump out if something wrong leading to incomplete message sent
     if (n != kl_val(it)->msize) {
       goto HANDLE_RESPONSES;
@@ -1084,6 +1072,9 @@ int send_over_network()
       goto HANDLE_RESPONSES;
     }
 
+    //Update accumulated response buffer size
+    response_bytes[messages_sent - 1] = response_buf_size;
+
     //set likely_buggy flag if AFLNet does not receive any feedback from the server
     //it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
     if (prev_buf_size == response_buf_size) likely_buggy = 1;
@@ -1093,6 +1084,10 @@ int send_over_network()
 HANDLE_RESPONSES:
 
   net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+
+  if (messages_sent > 0) {
+    response_bytes[messages_sent - 1] = response_buf_size;
+  }
 
   //wait a bit letting the server to complete its remaing task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
