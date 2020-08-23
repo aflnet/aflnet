@@ -143,7 +143,7 @@ cd $WORKDIR/live555/testProgs
 ./testOnDemandRTSPServer 8554
 ```
 
-After that, we ask [tcpdump data-network packet analyzer](https://tcpdump.org) to capture all traffics through the port opened by the server, which is 8554 in this case. Note that you may need to change the network interface that works for your setup using the ```-i``` option.
+After that, we ask [tcpdump data-network packet analyzer](https://www.tcpdump.org) to capture all traffics through the port opened by the server, which is 8554 in this case. Note that you may need to change the network interface that works for your setup using the ```-i``` option.
 
 ```bash
 sudo tcpdump -w rtsp.pcap -i lo port 8554
