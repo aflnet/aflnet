@@ -782,9 +782,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 
       for(i=1; i < state_count; i++) {
         unsigned int curStateID = state_sequence[i];
-        char fromState[10], toState[10];
-        sprintf(fromState, "%d", prevStateID);
-        sprintf(toState, "%d", curStateID);
+        char fromState[STATE_STR_LEN], toState[STATE_STR_LEN];
+        snprintf(fromState, STATE_STR_LEN, "%d", prevStateID);
+        snprintf(toState, STATE_STR_LEN, "%d", curStateID);
 
         //Check if the prevStateID and curStateID have been added to the state machine as vertices
         //Check also if the edge prevStateID->curStateID has been added
