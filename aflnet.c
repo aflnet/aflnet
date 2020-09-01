@@ -1413,16 +1413,16 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
 
   u8 *out = NULL;
 
-  char strState[10];
-  int len = 0;
+  char strState[STATE_STR_LEN];
+  size_t len = 0;
   for (i = 0; i < stateCount; i++) {
     //Limit the loop to shorten the output string
     if ((i >= 2) && (stateSequence[i] == stateSequence[i - 1]) && (stateSequence[i] == stateSequence[i - 2])) continue;
     unsigned int stateID = stateSequence[i];
     if (i == stateCount - 1) {
-      sprintf(strState, "%d", (int) stateID);
+      snprintf(strState, STATE_STR_LEN, "%d", (int) stateID);
     } else {
-      sprintf(strState, "%d-", (int) stateID);
+      snprintf(strState, STATE_STR_LEN, "%d-", (int) stateID);
     }
     out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
     memcpy(&out[len], strState, strlen(strState) + 1);
@@ -1430,12 +1430,12 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
     //As Linux limit the size of the file name
     //we set a fixed upper bound here
     if (len > 150 && (i + 1 < stateCount)) {
-      sprintf(strState, "%s", "end-at-");
+      snprintf(strState, STATE_STR_LEN, "%s", "end-at-");
       out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
       memcpy(&out[len], strState, strlen(strState) + 1);
       len=strlen(out);
 
-      sprintf(strState, "%d", (int) stateSequence[stateCount - 1]);
+      snprintf(strState, STATE_STR_LEN, "%d", (int) stateSequence[stateCount - 1]);
       out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
       memcpy(&out[len], strState, strlen(strState) + 1);
       len=strlen(out);
