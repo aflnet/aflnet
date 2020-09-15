@@ -8054,7 +8054,7 @@ static void usage(u8* argv0) {
        "Settings for network protocol fuzzing (AFLNet):\n\n"
 
        "  -N netinfo    - server information (e.g., tcp://127.0.0.1/8554)\n"
-       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS)\n"
+       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS, SMTP, SSH, TLS)\n"
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
        "  -W msec       - waiting time (in miliseconds) for receiving the first response to each input sent\n"
        "  -w usec       - waiting time (in micro seconds) for receiving follow-up responses\n"
