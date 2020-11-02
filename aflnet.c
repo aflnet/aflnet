@@ -321,13 +321,13 @@ region_t* extract_requests_dicom(unsigned char* buf, unsigned int buf_size, unsi
   unsigned int byte_count = 0;
   while (byte_count < buf_size) {
 
-    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break; 
-    
+    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break;
+
     // Bytes from third to sixth encode the PDU length.
-    pdu_length = 
-      (buf[byte_count + 5]) | 
-      (buf[byte_count + 4] << 8)  | 
-      (buf[byte_count + 3] << 16) | 
+    pdu_length =
+      (buf[byte_count + 5]) |
+      (buf[byte_count + 4] << 8)  |
+      (buf[byte_count + 3] << 16) |
       (buf[byte_count + 2] << 24);
 
     // DICOM Header(6 bytes) includes PDU type and PDU length.
@@ -1281,8 +1281,9 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
       }
       while (n > 0) {
         usleep(10);
-        *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n);
+        *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n + 1);
         memcpy(&(*response_buf)[*len], temp_buf, n);
+        (*response_buf)[(*len) + n] = '\0';
         *len = *len + n;
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
         if ((n < 0) && (errno != EAGAIN)) {
