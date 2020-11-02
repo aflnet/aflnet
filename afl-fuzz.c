@@ -1085,11 +1085,11 @@ HANDLE_RESPONSES:
 
   net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
 
-  if (messages_sent > 0) {
+  if (messages_sent > 0 && response_bytes != NULL) {
     response_bytes[messages_sent - 1] = response_buf_size;
   }
 
-  //wait a bit letting the server to complete its remaing task(s)
+  //wait a bit letting the server to complete its remaining task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
   while(1) {
     if (has_new_bits(session_virgin_bits) != 2) break;
