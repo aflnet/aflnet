@@ -376,6 +376,7 @@ char **was_fuzzed_map = NULL; /* A 2D array keeping state-specific was_fuzzed in
 u32 fuzzed_map_states = 0;
 u32 fuzzed_map_qentries = 0;
 u32 max_seed_region_count = 0;
+u32 local_port;		/* TCP/UDP port number to use as source */
 
 /* flags */
 u8 use_net = 0;
@@ -991,6 +992,7 @@ int send_over_network()
   int n;
   u8 likely_buggy = 0;
   struct sockaddr_in serv_addr;
+  struct sockaddr_in my_serv_addr;
 
   //Clean up the server if needed
   if (cleanup_script) system(cleanup_script);
@@ -1033,6 +1035,17 @@ int send_over_network()
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(net_port);
   serv_addr.sin_addr.s_addr = inet_addr(net_ip);
+
+  if(local_port > 0) {
+    my_serv_addr.sin_family = AF_INET;
+    my_serv_addr.sin_addr.s_addr = INADDR_ANY;
+    my_serv_addr.sin_port = htons(local_port);
+
+    my_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (bind(sockfd, (struct sockaddr*) &my_serv_addr, sizeof(struct sockaddr_in)))  {
+      FATAL("Unable to bind socket on local source port");
+    }
+  }
 
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
     //If it cannot connect to the server under test
@@ -8745,7 +8758,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:l:")) > 0)
 
     switch (opt) {
 
@@ -8968,6 +8981,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "TLS")) {
           extract_requests = &extract_requests_tls;
           extract_response_codes = &extract_response_codes_tls;
+        } else if (!strcmp(optarg, "SIP")) {
+          extract_requests = &extract_requests_sip;
+          extract_response_codes = &extract_response_codes_sip;
         } else {
           FATAL("%s protocol is not supported yet!", optarg);
         }
@@ -9008,6 +9024,13 @@ int main(int argc, char** argv) {
 
         if (cleanup_script) FATAL("Multiple -c options not supported");
         cleanup_script = optarg;
+        break;
+
+      case 'l': /* local port to connect from */
+
+        if (local_port) FATAL("Multiple -l options not supported");
+        local_port = atoi(optarg);
+	      if (local_port < 1024 || local_port > 65535) FATAL("Invalid source port number");
         break;
 
       default:
