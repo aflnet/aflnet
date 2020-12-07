@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
   }
 
   int sockfd;
-  if (!strcmp(argv[2], "DTLS12")) {
+  if ((!strcmp(argv[2], "DTLS12")) || (!strcmp(argv[2], "SIP"))) {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   } else {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
