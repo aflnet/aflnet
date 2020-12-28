@@ -518,6 +518,9 @@ void update_region_annotations(struct queue_entry* q)
 {
   u32 i = 0;
 
+  if (response_bytes == NULL)
+    return;
+
   for (i = 0; i < messages_sent; i++) {
     if ((response_bytes[i] == 0) || ( i > 0 && (response_bytes[i] - response_bytes[i - 1] == 0))) {
       q->regions[i].state_sequence = NULL;
