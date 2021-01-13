@@ -58,7 +58,9 @@ int main(int argc, char* argv[])
   else if (!strcmp(argv[2], "SMTP")) extract_response_codes = &extract_response_codes_smtp;
   else if (!strcmp(argv[2], "SSH")) extract_response_codes = &extract_response_codes_ssh;
   else if (!strcmp(argv[2], "TLS")) extract_response_codes = &extract_response_codes_tls;
-  else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
+  else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
+  else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
+  else {fprintf(stderr, "[AFL-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
 
   portno = atoi(argv[3]);
 

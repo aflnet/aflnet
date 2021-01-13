@@ -992,7 +992,7 @@ int send_over_network()
   int n;
   u8 likely_buggy = 0;
   struct sockaddr_in serv_addr;
-  struct sockaddr_in my_serv_addr;
+  struct sockaddr_in local_serv_addr;
 
   //Clean up the server if needed
   if (cleanup_script) system(cleanup_script);
@@ -1036,13 +1036,16 @@ int send_over_network()
   serv_addr.sin_port = htons(net_port);
   serv_addr.sin_addr.s_addr = inet_addr(net_ip);
 
+  //This piece of code is only used for targets that send responses to a specific port number
+  //The Kamailio SIP server is an example. After running this code, the intialized sockfd 
+  //will be bound to the given local port
   if(local_port > 0) {
-    my_serv_addr.sin_family = AF_INET;
-    my_serv_addr.sin_addr.s_addr = INADDR_ANY;
-    my_serv_addr.sin_port = htons(local_port);
+    local_serv_addr.sin_family = AF_INET;
+    local_serv_addr.sin_addr.s_addr = INADDR_ANY;
+    local_serv_addr.sin_port = htons(local_port);
 
-    my_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (bind(sockfd, (struct sockaddr*) &my_serv_addr, sizeof(struct sockaddr_in)))  {
+    local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (bind(sockfd, (struct sockaddr*) &local_serv_addr, sizeof(struct sockaddr_in)))  {
       FATAL("Unable to bind socket on local source port");
     }
   }
@@ -9030,6 +9033,8 @@ int main(int argc, char** argv) {
         break;
 
       case 'l': /* local port to connect from */
+        //This option is only used for targets that send responses to a specific port number
+        //The Kamailio SIP server is an example
 
         if (local_port) FATAL("Multiple -l options not supported");
         local_port = atoi(optarg);
