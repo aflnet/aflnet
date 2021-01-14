@@ -9157,6 +9157,11 @@ int main(int argc, char** argv) {
   }
 
   if (state_aware_mode) {
+
+    if (state_ids_count == 0) {
+      PFATAL("No server states have been detected. Server responses are likely empty!");
+    }
+
     while (1) {
       u8 skipped_fuzz;
 
