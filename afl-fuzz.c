@@ -979,11 +979,6 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 
   //Free state sequence
   if (state_sequence) ck_free(state_sequence);
-
-  /* save the seed to file for debugging purpose */
-  u8 *fn = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
-  save_kl_messages_to_file(kl_messages, fn, 1, messages_sent);
-  ck_free(fn);
 }
 
 /* Send (mutated) messages in order to the server under test */
@@ -3580,6 +3575,11 @@ static void perform_dry_run(char** argv) {
     /* Update state-aware variables (e.g., state machine, regions and their annotations */
     if (state_aware_mode) update_state_aware_variables(q, 1);
 
+    /* save the seed to file for replaying */
+    u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(q->fname));
+    save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+    ck_free(fn_replay);
+
     /* AFLNet delete the kl_messages */
     delete_kl_messages(kl_messages);
 
@@ -4008,6 +4008,11 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
     add_to_queue(fn, full_len, 0);
 
     if (state_aware_mode) update_state_aware_variables(queue_top, 0);
+
+    /* save the seed to file for replaying */
+    u8 *fn_replay = alloc_printf("%s/replayable-queue/%s", out_dir, basename(queue_top->fname));
+    save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+    ck_free(fn_replay);
 
     if (hnb == 2) {
       queue_top->has_new_cov = 1;
