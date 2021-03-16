@@ -1444,7 +1444,6 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
   char http[5] = {0x48, 0x54, 0x54, 0x50, 0x2F};
   unsigned int message_code = 0;
   char tempHTTP[4];
-  char tempIPP[2];
 
   mem = (char *)ck_alloc(mem_size);
 
@@ -1468,8 +1467,11 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
         
         if (message_code == 200) {
           //Extract IPP response code (bytes 3 and 4)
-          memcpy(tempIPP, &buf[byte_count + 2], 2);
-          message_code += (unsigned int) atoi(tempIPP); //200 + IPP code to not confuse initial 0 state with successful-ok 0 state
+          unsigned int third = (unsigned int) buf[byte_count + 2];
+          unsigned int fourth = (unsigned int) buf[byte_count + 3];
+
+          //200 + IPP code to not confuse initial 0 state with successful-ok 0 state
+          message_code += (unsigned int) (10 * third + fourth);
         }
 
         state_count++;
