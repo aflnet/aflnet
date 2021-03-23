@@ -75,9 +75,9 @@ ENV AFLNET="/home/ubuntu/aflnet"
 ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
 ENV AFL_PATH="${AFLNET}"
 
-#ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
-#    AFL_SKIP_CPUFREQ=1 \
-ENV    AFL_NO_AFFINITY=1
+ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+    AFL_SKIP_CPUFREQ=1 \
+    AFL_NO_AFFINITY=1
 
 RUN mkdir $WORKDIR && \
     pip install gcovr
@@ -92,5 +92,5 @@ RUN cd $WORKDIR && \
     cd ippsample && \
     git checkout 1ee7bcd4d0ed0e1e49b434c0ab296bb0c9499c0d && \
     CC=$AFLNET/afl-clang ./configure && \
-    make clean all && \
-    sudo make install
+    make clean all
+# RUN sudo make install
