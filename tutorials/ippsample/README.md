@@ -60,7 +60,7 @@ sudo tcpdump -i lo port 631 -w printAndCancelCurrentJobReq.pcap
 # You should run the following command immediately after the previus one
 # If you aren't fast enough, you can edit the ../examples/print-job.test file to print more copies, for example 100: ATTR integer copies 100
 ./ipptool -t -v -d job-id=1 ipp://127.0.0.1:631/ipp/print ../examples/cancel-job.test
-#If you get an error for job-id 1, stop the server and start it again, or change the job-id value in -d.
+# If you get an error for job-id 1, stop the server and start it again, or change the job-id value in -d.
 ```
 
 We should see the outputs showing that it successfully connected to the server, sending the printing job and cancelling it.
