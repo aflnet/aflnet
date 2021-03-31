@@ -6,7 +6,7 @@ We assume that you have read the AFLNet README.md which includes a detailed tuto
 As described from [RFC 2910](https://tools.ietf.org/html/rfc2910), an IPP operation is inclued in a HTTP message body.
 All client requests use the HTTP POST method.
 The server can send an intermediate response (HTTP 100 Continue) without IPP data. If the HTTP status code is 200 OK, the response contains the IPP message, and consequently the status-code field (byte 3 and 4 of the IPP message).
-IPP response codes can be found [here](https://www.iana.org/assignments/ipp-registrations/ipp-registrations.xhtml)
+IPP response codes can be found [here](https://www.iana.org/assignments/ipp-registrations/ipp-registrations.xhtml).
 
 ## Step-0. Server compilation & setup
 
