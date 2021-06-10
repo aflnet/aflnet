@@ -489,7 +489,7 @@ u32 get_unique_state_count(unsigned int *state_sequence, unsigned int state_coun
   return result;
 }
 
-/* Check if a state sequence is interesting (e.g., new state is dicovered). Loop is taken into account */
+/* Check if a state sequence is interesting (e.g., new state is discovered). Loop is taken into account */
 u8 is_state_sequence_interesting(unsigned int *state_sequence, unsigned int state_count) {
   //limit the loop count to only 1
   u32 *trimmed_state_sequence = NULL;
