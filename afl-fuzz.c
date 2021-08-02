@@ -7710,6 +7710,11 @@ static void sync_fuzzers(char** argv) {
 
         write_to_testcase(mem, st.st_size);
 
+        region_t *regions;
+        u32 region_count;
+        regions = (*extract_requests)(mem, st.st_size, &region_count);
+        kl_messages = construct_kl_messages(path, regions, region_count);
+
         fault = run_target(argv, exec_tmout);
 
         if (stop_soon) return;
@@ -7720,6 +7725,10 @@ static void sync_fuzzers(char** argv) {
         syncing_party = sd_ent->d_name;
         queued_imported += save_if_interesting(argv, mem, st.st_size, fault);
         syncing_party = 0;
+
+        /* AFLNet delete the kl_messages */
+        ck_free(regions);
+        delete_kl_messages(kl_messages);
 
         /* AFLNet: unset this flag to disable request extractions while adding new seed to the queue */
         corpus_read_or_sync = 0;
