@@ -796,6 +796,109 @@ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
+// mbap + fid
+// mind sizeof alignment roundup
+typedef struct mbap_be {
+  unsigned short tid;      // transaction id
+  unsigned short protocol;
+  unsigned short length;   // remaining length
+  unsigned char uid;       // unit id
+  unsigned char fid;       // func id
+} mbap_be;
+
+// end_ptr point to last byte
+#define remaining_length(cur_ptr, end_ptr) end_ptr - cur_ptr + 1
+// be to se
+#define ushort_be_to_se(v) ((v & 0xff) << 8) + ((v & 0xff00) >> 8)
+
+// modbus is a binary protocol thus there is no need for complicated parsing, just check buf_size
+// command data is not divided in to more regions because user defined function code
+// there is no clear distinction between requests except maximum size,
+// depending on the size field is unreliable so lets not put any malformed req into seed
+region_t* extract_requests_modbustcp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+{
+  // by ptr, watch for null ptr
+  unsigned char * end_ptr = buf + buf_size - 1;
+  unsigned char * cur_ptr = buf;
+  // by index
+  unsigned int cur_start = 0;
+  //
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+  
+  // null ptr guard
+  if (!buf || buf_size == 0) {
+    *region_count_ref = region_count;
+    return regions;
+  }
+
+  while (cur_ptr <= end_ptr) {
+    unsigned int remaining_buf_size = remaining_length(cur_ptr, end_ptr);
+    // mbap + func id = 8
+    // sizeof might return wrong value due to alignment
+    if ( remaining_buf_size >= sizeof(mbap_be)) {
+      // adding mbap regions
+      region_count += 5;
+      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+      for (int count = region_count - 5; count < region_count; count++ ) {
+        regions[count].state_sequence = NULL;
+        regions[count].state_count = 0;
+        // MBAP
+        // transaction id, protocol id, length 2 bytes each
+        if (count < region_count - 2) {
+          regions[count].start_byte = cur_start++;
+          regions[count].end_byte = cur_start++;
+        }
+        // unit id + function code 1 byte each
+        else {
+          regions[count].start_byte = cur_start;
+          regions[count].end_byte = cur_start++;
+        }
+      }
+      // Check data region
+      mbap_be * header = (mbap_be *) cur_ptr;
+      // uid + fcode + data - 2 => data length
+      // data max 252 bytes for valid packet
+      // allow > 252?
+      unsigned short remaining_packet_length = ushort_be_to_se(header->length);
+      remaining_packet_length = (remaining_packet_length > 254) ? 254 : remaining_packet_length;
+      // trust data field - only option else rewrite everything
+      unsigned short data_length = remaining_packet_length - 2;
+      unsigned int packet_length = remaining_packet_length + 6;
+      unsigned short available_data_length = (remaining_buf_size > packet_length) ? data_length : remaining_buf_size - sizeof(mbap_be);
+      // advance ptr
+      cur_ptr += sizeof(mbap_be);
+      // add data region
+      if (available_data_length > 0){
+        region_count += 1;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+        regions[region_count - 1].start_byte = cur_start;
+        cur_start = cur_start + available_data_length - 1;
+        regions[region_count - 1].end_byte = cur_start++;
+      }
+      // advance ptr
+      cur_ptr += available_data_length;
+    }
+    else {
+      // malformed, put all in one region
+      // no more data beyond this point
+      if (remaining_buf_size > 0) {
+        region_count += 1;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = cur_start + remaining_buf_size - 1;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+      }
+      break; // out
+    }
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
 unsigned int* extract_response_codes_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -1502,6 +1605,67 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
   return state_sequence;
 }
 
+// same as extract request, just check buf_size
+unsigned int* extract_response_codes_modbustcp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  // by ptr - CAN BE NULL
+  unsigned char * end_ptr = buf + buf_size - 1;
+  unsigned char * cur_ptr = buf;
+  //
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  // null ptr guard
+  if (!buf || buf_size == 0)
+    goto RET;
+
+  while (cur_ptr <= end_ptr) {
+
+    unsigned int remaining_buf_size = remaining_length(cur_ptr, end_ptr);
+    // mbap + func id = 8
+    // sizeof might return wrong value due to alignment
+    if (remaining_buf_size >= sizeof(mbap_be)) {
+      mbap_be * header = (mbap_be *) cur_ptr;
+      // per protocol, respond function code 0 -> 127 == non error &
+      // return data should mirror request data, get only fid as status
+      unsigned int message_code = header->fid;
+      unsigned short remaining_packet_length = ushort_be_to_se(header->length);
+      // trust data field - only option else rewrite everything
+      // data max 252 bytes for valid packet
+      // allow > 252?
+      unsigned short data_length = remaining_packet_length - 2;
+      unsigned int packet_length = remaining_packet_length + 6;
+      unsigned short available_data_length = (remaining_buf_size > packet_length) ? data_length : remaining_buf_size - sizeof(mbap_be);
+      // advance ptr
+      cur_ptr += sizeof(mbap_be);
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      if (header->fid > 127) {
+        // function code 128 -> 255 error
+        // function code == non error + 128
+        // error code in data
+        // should combine data + function code
+        if (available_data_length > 0) {
+          // prob use proper hash later
+          // for now just combine error function code with at most 3 more byte
+          unsigned int len = (available_data_length > 3) ? 3 : available_data_length;
+          memcpy((char *) &message_code + 1, cur_ptr, len);
+        }
+      }
+      state_sequence[state_count - 1] = message_code;
+      // advance ptr
+      cur_ptr += available_data_length;
+    }
+  }
+RET:
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 // kl_messages manipulating functions
 
 klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_count)
@@ -1632,10 +1796,14 @@ region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_
 }
 
 // Network communication functions
+// -1 error
+//  0 poll timeout
+// >0 data length
+// socket timed_out 1 byte flag
 
-int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
+int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len, unsigned char *timed_out) {
   unsigned int byte_count = 0;
-  int n;
+  int n = 0;
   struct pollfd pfd[1];
   pfd[0].fd = sockfd;
   pfd[0].events = POLLOUT;
@@ -1648,15 +1816,26 @@ int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
         usleep(10);
         n = send(sockfd, &mem[byte_count], len - byte_count, MSG_NOSIGNAL);
         if (n == 0) return byte_count;
-        if (n == -1) return -1;
+        if (n == -1) {
+          // timed out but return byte sent, check in caller
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            *timed_out = 1;
+            return byte_count;
+          }
+          else
+            return -1;
+        }
         byte_count += n;
       }
     }
-  }
-  return byte_count;
+    else
+      return -1;
+  } else
+      return rv;
+  return n;
 }
 
-int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf, unsigned int *len) {
+int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf, unsigned int *len, unsigned char *timed_out) {
   char temp_buf[1000];
   int n;
   struct pollfd pfd[1];
@@ -1669,27 +1848,37 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
   if (rv > 0) {
     if (pfd[0].revents & POLLIN) {
       n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-      if ((n < 0) && (errno != EAGAIN)) {
-        return 1;
+      if (n < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+          return -1;
+        else {
+          *timed_out = 1;
+          return n; // cannot get number of bytes here
+        }
       }
       while (n > 0) {
         usleep(10);
-        *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n + 1);
+        *response_buf = (unsigned char *)ck_realloc_block(*response_buf, *len + n + 1);
         memcpy(&(*response_buf)[*len], temp_buf, n);
         (*response_buf)[(*len) + n] = '\0';
         *len = *len + n;
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
-        if ((n < 0) && (errno != EAGAIN)) {
-          return 1;
+        if (n < 0) {
+          if (errno != EAGAIN && errno != EWOULDBLOCK)
+            return -1;
+          else {
+            *timed_out = 1;
+            return *len;
+          }
         }
       }
+      return *len; // all data pending after poll has been received successfully
     }
-  } else
-    if (rv < 0) // an error was returned
-      return 1;
-
-  // rv == 0 poll timeout or all data pending after poll has been received successfully
-  return 0;
+    else
+      return -1;
+  }
+  else
+    return rv; // poll return -1 || 0
 }
 
 // Utility function

@@ -371,7 +371,8 @@ u32 selected_state_index = 0;
 u32 state_cycles = 0;
 u32 messages_sent = 0;
 EXP_ST u8 session_virgin_bits[MAP_SIZE];     /* Regions yet untouched while the SUT is still running */
-EXP_ST u8 *cleanup_script; /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
+EXP_ST u8 *cleanup_script = NULL; /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
+EXP_ST u8 *reset_script = NULL; /* script to reset remote SUT, net_only mode -- make fuzzing more deterministic */
 char **was_fuzzed_map = NULL; /* A 2D array keeping state-specific was_fuzzed information */
 u32 fuzzed_map_states = 0;
 u32 fuzzed_map_qentries = 0;
@@ -390,6 +391,7 @@ u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
 u8 state_selection_algo = ROUND_ROBIN, seed_selection_algo = RANDOM_SELECTION;
 u8 false_negative_reduction = 0;
+u8 net_only = 0;
 
 /* Implemented state machine */
 Agraph_t  *ipsm;
@@ -986,6 +988,7 @@ int send_over_network()
 {
   int n;
   u8 likely_buggy = 0;
+  u8 timeout_flag = 0;
   struct sockaddr_in serv_addr;
   struct sockaddr_in local_serv_addr;
 
@@ -1048,59 +1051,123 @@ int send_over_network()
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
     //If it cannot connect to the server under test
     //try it again as the server initial startup time is varied
-    for (n=0; n < 1000; n++) {
+    for (n = 0; n < 1000; n++) {
+      // maybe should create a new socket?
       if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) break;
       usleep(1000);
     }
-    if (n== 1000) {
+    if (n == 1000) {
       close(sockfd);
-      return 1;
+      if (!net_only) {
+        // Consider error since message is not yet sent
+        return FAULT_ERROR;
+      }
+      else {
+        // Cannot monitor binary so might be crash?
+        return FAULT_CRASH;
+      }
     }
   }
 
-  //retrieve early server response if needed
-  if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) goto HANDLE_RESPONSES;
+  timeout_flag = 0;
+  // retrieve early server response if needed
+  n = net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size, &timeout_flag);
+  // allowing timeout
+  if ( n < 0 ) {
+    goto HANDLE_RESPONSES;
+  }
 
   //write the request messages
   kliter_t(lms) *it;
   messages_sent = 0;
 
-  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
-    n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
-    messages_sent++;
-
-    //Allocate memory to store new accumulated response buffer size
-    response_bytes = (u32 *) ck_realloc(response_bytes, messages_sent * sizeof(u32));
-
-    //Jump out if something wrong leading to incomplete message sent
-    if (n != kl_val(it)->msize) {
+  /* Experimental for modbus tcp
+   * since some modbus tcp implementation relies on getting full APU 
+   * per read (i.e. pymodbus). Spliting up request can be problematic.
+   * Try to combine all available message into one.
+   */
+  if (extract_requests == &extract_requests_modbustcp) {
+    u8 * msgbuf = NULL;
+    u32 msglen = 0;
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+      msgbuf = ck_realloc_block(msgbuf, msglen + kl_val(it)->msize);
+      memcpy(&msgbuf[msglen], kl_val(it)->mdata, kl_val(it)->msize);
+      msglen += kl_val(it)->msize;
+      messages_sent++; // increase anyway
+      // not sure how respond bytes tracker affect the algo
+      // Allocate memory to store new accumulated response buffer size
+      response_bytes = (u32 *) ck_realloc_block(response_bytes, messages_sent * sizeof(u32));
+      response_bytes[messages_sent - 1] = response_buf_size; // unchanged until last one;
+    }
+    timeout_flag = 0;
+    n = net_send(sockfd, timeout, msgbuf, msglen, &timeout_flag);
+    // allowing timeouts
+    if ( n < 0 ) {
       goto HANDLE_RESPONSES;
     }
-
-    //retrieve server response
-    u32 prev_buf_size = response_buf_size;
-    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) {
+    timeout_flag = 0;
+    n = net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size, &timeout_flag);
+    response_bytes[messages_sent - 1] = response_buf_size; // set here
+    // allowing timeouts
+    if ( n < 0 ) {
       goto HANDLE_RESPONSES;
     }
+  }
+  else {
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
 
-    //Update accumulated response buffer size
-    response_bytes[messages_sent - 1] = response_buf_size;
+      timeout_flag = 0;
+      n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize, &timeout_flag);
+      messages_sent++;
 
-    //set likely_buggy flag if AFLNet does not receive any feedback from the server
-    //it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
-    if (prev_buf_size == response_buf_size) likely_buggy = 1;
-    else likely_buggy = 0;
+      //Allocate memory to store new accumulated response buffer size
+      response_bytes = (u32 *) ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
+      //Jump out if something wrong leading to incomplete message sent
+      if (n != kl_val(it)->msize) {
+        goto HANDLE_RESPONSES;
+      }
+
+      //retrieve server response
+      u32 prev_buf_size = response_buf_size;
+      timeout_flag = 0;
+      n = net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size, &timeout_flag);
+      // allowing timeouts
+      if ( n < 0 ) {
+        goto HANDLE_RESPONSES;
+      }
+
+      //Update accumulated response buffer size
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+      // set likely_buggy flag if AFLNet does not receive any feedback from the server
+      // it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
+      if (prev_buf_size == response_buf_size) likely_buggy = 1;
+      else likely_buggy = 0;
+    }
   }
 
 HANDLE_RESPONSES:
 
-  net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+  if (net_only) {
+    // got here without sending anything
+    // recv throw error
+    if (messages_sent == 0 || response_bytes == NULL)
+      return FAULT_ERROR;
+    // got here normally or have encountered error in loop
+    // if anything gone wrong assume target has crashed
+    if (n < 0)
+      return FAULT_CRASH;
+  }
+
+  timeout_flag = 0;
+  n = net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size, &timeout_flag);
 
   if (messages_sent > 0 && response_bytes != NULL) {
     response_bytes[messages_sent - 1] = response_buf_size;
   }
 
-  //wait a bit letting the server to complete its remaining task(s)
+  // wait a bit letting the server to complete its remaining task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
   while(1) {
     if (has_new_bits(session_virgin_bits) != 2) break;
@@ -1108,14 +1175,20 @@ HANDLE_RESPONSES:
 
   close(sockfd);
 
+  // in net_only mode return 0 == FAULT_NONE
+
   if (likely_buggy && false_negative_reduction) return 0;
 
-  if (terminate_child && (child_pid > 0)) kill(child_pid, SIGTERM);
+  if (!net_only){
 
-  //give the server a bit more time to gracefully terminate
-  while(1) {
-    int status = kill(child_pid, 0);
-    if ((status != 0) && (errno == ESRCH)) break;
+    if (terminate_child && (child_pid > 0)) kill(child_pid, SIGTERM);
+
+    //give the server a bit more time to gracefully terminate
+    while(1) {
+      int status = kill(child_pid, 0);
+      if ((status != 0) && (errno == ESRCH)) break;
+    }
+
   }
 
   return 0;
@@ -3139,6 +3212,15 @@ static u8 run_target(char** argv, u32 timeout) {
   memset(trace_bits, 0, MAP_SIZE);
   MEM_BARRIER();
 
+  if (net_only) {
+      /* In net only mode there is no child or forkserver to initialize
+         allow use of script to somehow reset SUT state
+         For each request use cleanup_script */
+      if (reset_script) system(reset_script);
+  }
+
+  else
+  
   /* If we're running in "dumb" mode, we can't rely on the fork server
      logic compiled into the target program, so we will just keep calling
      execve(). There is a bit of code duplication between here and
@@ -3253,26 +3335,44 @@ static u8 run_target(char** argv, u32 timeout) {
 
   setitimer(ITIMER_REAL, &it, NULL);
 
-  /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
+  /* net_only mode cannot relies on interrupt handler for connection termination 
+     send_over_network should set it own flag to indicate timeout
+     FAULT_CRASH is also "detected" in send_over_network in this mode.*/
+  u32 net_status = 0;
 
-  if (dumb_mode == 1 || no_forkserver) {
-    if (use_net) send_over_network();
-    if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
+  if (use_net) {
+    net_status = send_over_network();
+  }
 
-  } else {
-    if (use_net) send_over_network();
-    s32 res;
+  if(net_only) {
+    // In this mode we cannot kill remote target, just hope cleanup script does its job
+    // else reset script is called each time run_target is called - bottle neck?
+  }
 
-    if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
+  else {
 
-      if (stop_soon) return 0;
-      RPFATAL(res, "Unable to communicate with fork server (OOM?)");
+    /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
+
+    if (dumb_mode == 1 || no_forkserver) {
+
+      if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
+
+    } else {
+
+      s32 res;
+
+      if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
+
+        if (stop_soon) return 0;
+        RPFATAL(res, "Unable to communicate with fork server (OOM?)");
+
+      }
 
     }
 
-  }
+    if (!WIFSTOPPED(status)) child_pid = 0;
 
-  if (!WIFSTOPPED(status)) child_pid = 0;
+  }
 
   getitimer(ITIMER_REAL, &it);
   exec_ms = (u64) timeout - (it.it_value.tv_sec * 1000 +
@@ -3303,24 +3403,31 @@ static u8 run_target(char** argv, u32 timeout) {
 
   /* Report outcome to caller. */
 
-  if (WIFSIGNALED(status) && !stop_soon) {
-
-    kill_signal = WTERMSIG(status);
-
-    if (child_timed_out && kill_signal == SIGKILL) return FAULT_TMOUT;
-
-    if (kill_signal == SIGTERM) return FAULT_NONE;
-
-    return FAULT_CRASH;
-
+  if (net_only) {
+    return net_status;
   }
+  else {
 
-  /* A somewhat nasty hack for MSAN, which doesn't support abort_on_error and
-     must use a special exit code. */
+    if (WIFSIGNALED(status) && !stop_soon) {
 
-  if (uses_asan && WEXITSTATUS(status) == MSAN_ERROR) {
-    kill_signal = 0;
-    return FAULT_CRASH;
+      kill_signal = WTERMSIG(status);
+
+      if (child_timed_out && kill_signal == SIGKILL) return FAULT_TMOUT;
+
+      if (kill_signal == SIGTERM) return FAULT_NONE;
+
+      return FAULT_CRASH;
+
+    }
+
+    /* A somewhat nasty hack for MSAN, which doesn't support abort_on_error and
+      must use a special exit code. */
+
+    if (uses_asan && WEXITSTATUS(status) == MSAN_ERROR) {
+      kill_signal = 0;
+      return FAULT_CRASH;
+    }
+
   }
 
   if ((dumb_mode == 1 || no_forkserver) && tb4 == EXEC_FAIL_SIG)
@@ -3694,7 +3801,10 @@ static void perform_dry_run(char** argv) {
 
       case FAULT_ERROR:
 
-        FATAL("Unable to execute target application ('%s')", argv[0]);
+        if (net_only)
+          FATAL("Unable to connect to remote");
+        else
+          FATAL("Unable to execute target application ('%s')", argv[0]);
 
       case FAULT_NOINST:
 
@@ -4007,8 +4117,13 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
     res = calibrate_case(argv, queue_top, mem, queue_cycle - 1, 0);
 
-    if (res == FAULT_ERROR)
-      FATAL("Unable to execute target application");
+    if (res == FAULT_ERROR) {
+      if(net_only)
+        FATAL("Unable to connect to remote");
+      else
+        FATAL("Unable to execute target application");
+    }
+      
 
     /*fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (fd < 0) PFATAL("Unable to create '%s'", fn);
@@ -4129,7 +4244,11 @@ keep_as_crash:
 
       break;
 
-    case FAULT_ERROR: FATAL("Unable to execute target application");
+    case FAULT_ERROR: 
+      if(net_only)
+        FATAL("Unable to connect to remote");
+      else
+        FATAL("Unable to execute target application");
 
     default: return keeping;
 
@@ -7782,6 +7901,8 @@ static void handle_skipreq(int sig) {
 
 static void handle_timeout(int sig) {
 
+  // This should not do anything in net_only as there is no child
+
   if (child_pid > 0) {
 
     child_timed_out = 1;
@@ -8065,6 +8186,9 @@ static void usage(u8* argv0) {
        "Settings for network protocol fuzzing (AFLNet):\n\n"
 
        "  -N netinfo    - server information (e.g., tcp://127.0.0.1/8554)\n"
+       "  -r            - remote only, no binary required\n"
+       "  -e            - (use with -r) script for managing remote server, run with each fuzz cycle,\n"
+       "                  should check / restart server if crashed."
        "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS, SMTP, SSH, TLS)\n"
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
        "  -W msec       - waiting time (in miliseconds) for receiving the first response to each input sent\n"
@@ -8756,8 +8880,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:l:")) > 0)
-
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:l:e:r")) > 0) {
     switch (opt) {
 
       case 'i': /* input dir */
@@ -8988,6 +9111,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "IPP")) {
           extract_requests = &extract_requests_ipp;
           extract_response_codes = &extract_response_codes_ipp;
+        } else if (!strcmp(optarg, "MODBUSTCP")) {
+          extract_requests = &extract_requests_modbustcp;
+          extract_response_codes = &extract_response_codes_modbustcp;
         } else {
           FATAL("%s protocol is not supported yet!", optarg);
         }
@@ -9039,13 +9165,27 @@ int main(int argc, char** argv) {
 	      if (local_port < 1024 || local_port > 65535) FATAL("Invalid source port number");
         break;
 
+      case 'e': /* reset script, should only needed for net only */
+        if (reset_script) FATAL("Multiple -e options not supported");
+        reset_script = optarg;
+        break;
+
+      case 'r': 
+        // remote only mode - no instrumentation - no fork or execve
+        if (net_only) FATAL("Multiple -r options not supported");
+        net_only = 1;
+        no_forkserver = 1;
+        dumb_mode = 1;
+        break;
+
       default:
 
         usage(argv[0]);
 
     }
+  }
 
-  if (optind == argc || !in_dir || !out_dir) usage(argv[0]);
+  if (!in_dir || !out_dir || (!net_only && optind == argc)) usage(argv[0]);
 
   //AFLNet - Check for required arguments
   if (!use_net) FATAL("Please specify network information of the server under test (e.g., tcp://127.0.0.1/8554)");
@@ -9059,6 +9199,10 @@ int main(int argc, char** argv) {
 
   if (!strcmp(in_dir, out_dir))
     FATAL("Input and output directories can't be the same");
+
+  if (reset_script) {
+    if(!net_only) FATAL("-e requires -r");
+  }
 
   if (dumb_mode) {
 
@@ -9091,7 +9235,7 @@ int main(int argc, char** argv) {
 
   save_cmdline(argc, argv);
 
-  fix_up_banner(argv[optind]);
+  fix_up_banner(net_only ? "" : argv[optind]);
 
   check_if_tty();
 
@@ -9124,7 +9268,8 @@ int main(int argc, char** argv) {
 
   if (!out_file) setup_stdio_file();
 
-  check_binary(argv[optind]);
+  if (!net_only)
+    check_binary(argv[optind]);
 
   start_time = get_cur_time();
 
@@ -9284,7 +9429,7 @@ int main(int argc, char** argv) {
       if (forksrv_pid > 0) kill(forksrv_pid, SIGKILL);
   }
   /* Now that we've killed the forkserver, we wait for it to be able to get rusage stats. */
-  if (waitpid(forksrv_pid, NULL, 0) <= 0) {
+  if (!net_only && (waitpid(forksrv_pid, NULL, 0) <= 0)) {
     WARNF("error waitpid\n");
   }
 

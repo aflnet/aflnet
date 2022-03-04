@@ -55,7 +55,7 @@ export WORKDIR=$(pwd)
 ## Setup PATH environment variables
 
 ```bash
-export PATH=$AFLNET:$PATH
+export PATH=$PATH:$AFLNET
 export AFL_PATH=$AFLNET
 ```
 

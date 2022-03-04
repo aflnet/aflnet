@@ -45,6 +45,7 @@ int main(int argc, char* argv[])
   unsigned int *state_sequence;
   unsigned int socket_timeout = 1000;
   unsigned int poll_timeout = 1;
+  unsigned char timeout_flag = 0;
 
   if (argc < 4) {
     PFATAL("Usage: ./afl-replay packet_file protocol port [first_resp_timeout(us) [follow-up_resp_timeout(ms)]]");
@@ -116,11 +117,13 @@ int main(int argc, char* argv[])
 
   buf = get_test_case(argv[1], &buf_size);
   
+  timeout_flag = 0;
   //write the requests stored in the generated seed input
-  n = net_send(sockfd, timeout, buf, buf_size);
+  n = net_send(sockfd, timeout, buf, buf_size, &timeout_flag);
 
+  timeout_flag = 0;
   //receive server responses
-  net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size);
+  net_recv(sockfd, timeout, poll_timeout, &response_buf, &response_buf_size, &timeout_flag);
 
   close(sockfd);
 
