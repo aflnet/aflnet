@@ -650,7 +650,7 @@ unsigned int choose_target_state(u8 mode) {
       selected_state_index = UR(state_ids_count);
       result = state_ids[selected_state_index];
       break;
-    case ROUND_ROBIN: //Roud-robin state selection
+    case ROUND_ROBIN: //Round-robin state selection
       result = state_ids[selected_state_index];
       selected_state_index++;
       if (selected_state_index == state_ids_count) selected_state_index = 0;
