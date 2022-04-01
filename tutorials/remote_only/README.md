@@ -7,7 +7,11 @@ Use \-r for net only mode, example for simple modbustcp server:
 afl-fuzz -d -i in -o out -N tcp://127.0.0.1 -P MODBUSTCP -D 10000 -q 3 -s 3 -E -R -r -W 5 -e remote_only_runserver.sh
 ```
 
-For quick testing, copy the content of this directory to aflnet parent directory then run remote_only_fuzz.sh as root.
+For quick testing:
+- install python3 and pymodbus - you only need these for test server, not AFLNET
+  - python3 -m pip install -U pymodbus
+  - python3 -m pip install netifaces
+- copy the content of this directory to aflnet parent directory then run remote_only_fuzz.sh as root.
 
 Mind other options:
 
