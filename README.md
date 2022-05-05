@@ -69,6 +69,8 @@ AFLNet adds the following options to AFL. Run ```afl-fuzz --help``` to see all o
 
 - ***-D usec***: (optional) waiting time (in microseconds) for the server to complete its initialization 
 
+- ***-e netnsname***: (optional) network namespace name to run the server in
+
 - ***-K*** : (optional) send SIGTERM signal to gracefully terminate the server after consuming all request messages
 
 - ***-E*** : (optional) enable state aware mode

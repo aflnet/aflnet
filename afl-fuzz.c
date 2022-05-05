@@ -66,6 +66,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/file.h>
+#include <sys/capability.h>
 
 #include "aflnet.h"
 #include <graphviz/gvc.h>
@@ -372,6 +373,7 @@ u32 state_cycles = 0;
 u32 messages_sent = 0;
 EXP_ST u8 session_virgin_bits[MAP_SIZE];     /* Regions yet untouched while the SUT is still running */
 EXP_ST u8 *cleanup_script; /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
+EXP_ST u8 *netns_name; /* network namespace name to run server in */
 char **was_fuzzed_map = NULL; /* A 2D array keeping state-specific was_fuzzed information */
 u32 fuzzed_map_states = 0;
 u32 fuzzed_map_qentries = 0;
@@ -2827,6 +2829,25 @@ static void destroy_extras(void) {
 
 }
 
+/* Move process to the network namespace "netns_name" */
+
+static void move_process_to_netns() {
+  const char *netns_path_fmt = "/var/run/netns/%s";
+  char netns_path[272]; /* 15 for "/var/.." + 256 for netns name + 1 '\0' */
+  int netns_fd;
+
+  if (strlen(netns_name) > 256)
+    FATAL("Network namespace name \"%s\" is too long", netns_name);
+
+  sprintf(netns_path, netns_path_fmt, netns_name);
+
+  netns_fd = open(netns_path, O_RDONLY);
+  if (netns_fd == -1)
+    PFATAL("Unable to open %s", netns_path);
+
+  if (setns(netns_fd, CLONE_NEWNET) == -1)
+    PFATAL("setns failed");
+}
 
 /* Spin up fork server (instrumented mode only). The idea is explained here:
 
@@ -2892,6 +2913,11 @@ EXP_ST void init_forkserver(char** argv) {
     r.rlim_max = r.rlim_cur = 0;
 
     setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
+
+    /* Move the process to the different namespace. */
+
+    if (netns_name)
+      move_process_to_netns();
 
     /* Isolate the process and configure standard descriptors. If out_file is
        specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
@@ -3173,6 +3199,11 @@ static u8 run_target(char** argv, u32 timeout) {
       r.rlim_max = r.rlim_cur = 0;
 
       setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
+
+      /* Move the process to the different namespace. */
+
+      if (netns_name)
+        move_process_to_netns();
 
       /* Isolate the process and configure standard descriptors. If out_file is
          specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
@@ -8069,6 +8100,7 @@ static void usage(u8* argv0) {
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
        "  -W msec       - waiting time (in miliseconds) for receiving the first response to each input sent\n"
        "  -w usec       - waiting time (in micro seconds) for receiving follow-up responses\n"
+       "  -e netnsname  - run server in a different network namespace\n"
        "  -K            - send SIGTERM to gracefully terminate the server (see README.md)\n"
        "  -E            - enable state aware mode (see README.md)\n"
        "  -R            - enable region-level mutation operators (see README.md)\n"
@@ -8731,6 +8763,50 @@ static void save_cmdline(u32 argc, char** argv) {
 
 }
 
+/* Check that afl-fuzz (file/process) has some effective and permitted capability */
+
+static int check_ep_capability(cap_value_t cap, const char *filename) {
+  cap_t file_cap, proc_cap;
+  cap_flag_value_t cap_flag_value;
+  int no_capability = 1;
+  int pid = getpid();
+
+  file_cap = cap_get_file(filename);
+  proc_cap = cap_get_proc();
+
+  if (!file_cap && !proc_cap)
+    return no_capability;
+
+  if (file_cap) {
+    if (cap_get_flag(file_cap, cap, CAP_EFFECTIVE, &cap_flag_value))
+      PFATAL("Could not get CAP_EFFECTIVE flag value from file \"%s\"", filename);
+
+    if (cap_flag_value != CAP_SET)
+      return no_capability;
+
+    if (cap_get_flag(file_cap, cap, CAP_PERMITTED, &cap_flag_value))
+      PFATAL("Could not get CAP_PERMITTED flag value from file \"%s\"", filename);
+
+    if (cap_flag_value != CAP_SET)
+      return no_capability;
+  }
+
+  if (proc_cap) {
+    if (cap_get_flag(proc_cap, cap, CAP_EFFECTIVE, &cap_flag_value))
+      PFATAL("Could not get CAP_EFFECTIVE flag value from process id %d", pid);
+
+    if (cap_flag_value != CAP_SET)
+      return no_capability;
+
+    if (cap_get_flag(proc_cap, cap, CAP_PERMITTED, &cap_flag_value))
+      PFATAL("Could not get CAP_PERMITTED flag value from process id %d", pid);
+
+    if (cap_flag_value != CAP_SET)
+      return no_capability;
+  }
+
+  return 0;
+}
 
 #ifndef AFL_LIB
 
@@ -8756,7 +8832,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:P:KEq:s:RFc:l:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
 
     switch (opt) {
 
@@ -8952,6 +9028,12 @@ int main(int argc, char** argv) {
         socket_timeout = 1;
         break;
 
+      case 'e': /* network namespace name */
+        if (netns_name) FATAL("Multiple -e options not supported");
+
+        netns_name = optarg;
+        break;
+
       case 'P': /* protocol to be tested */
         if (protocol_selected) FATAL("Multiple -P options not supported");
 
@@ -9051,6 +9133,13 @@ int main(int argc, char** argv) {
   if (!use_net) FATAL("Please specify network information of the server under test (e.g., tcp://127.0.0.1/8554)");
 
   if (!protocol_selected) FATAL("Please specify the protocol to be tested using the -P option");
+
+  if (netns_name) {
+    if (check_ep_capability(CAP_SYS_ADMIN, argv[0]) != 0)
+      FATAL("Could not run the server under test in a \"%s\" network namespace "
+            "without CAP_SYS_ADMIN capability.\n You can set it by invoking "
+            "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".", netns_name);
+  }
 
   setup_signal_handlers();
   check_asan_opts();
