@@ -660,7 +660,7 @@ region_t* extract_requests_http(unsigned char* buf, unsigned int buf_size, unsig
   unsigned int mem_size = 1024;
   unsigned int region_count = 0;
   region_t *regions = NULL;
-  char terminator[2] = {0x0D, 0x0A};
+  char terminator[4] = {0x0D, 0x0A, 0x0D, 0x0A};
 
   mem=(char *)ck_alloc(mem_size);
 
@@ -670,8 +670,8 @@ region_t* extract_requests_http(unsigned char* buf, unsigned int buf_size, unsig
 
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
-    //Check if the last two bytes are 0x0D0A
-    if ((mem_count > 1) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0)) {
+    //Check if the last four bytes are 0x0D0A0D0A
+    if ((mem_count >=4) && (memcmp(&mem[mem_count - 3], terminator, 4) == 0)) {
       region_count++;
       regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
       regions[region_count - 1].start_byte = cur_start;
