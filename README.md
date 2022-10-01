@@ -28,7 +28,7 @@ year={2020},}
 # Install clang (as required by AFL/AFLNet to enable llvm_mode)
 sudo apt-get install clang
 # Install graphviz development
-sudo apt-get install graphviz-dev
+sudo apt-get install graphviz-dev libcap-dev
 ```
 
 ## AFLNet
