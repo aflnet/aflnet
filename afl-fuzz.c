@@ -5407,7 +5407,7 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   /* AFLNet update kl_messages linked list */
 
   // parse the out_buf into messages
-  u32 region_count;
+  u32 region_count = 0;
   region_t *regions = (*extract_requests)(out_buf, len, &region_count);
   if (!region_count) PFATAL("AFLNet Region count cannot be Zero");
 
