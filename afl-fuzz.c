@@ -4376,15 +4376,15 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
 
   /* Fields in the file:
 
-     total_execs, unix_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
+     unix_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
      favored_not_fuzzed, unique_crashes, unique_hangs, max_depth,
-     execs_per_sec */
+     execs_per_sec, total_execs */
 
   fprintf(plot_file,
-          "%llu, %llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f\n",
-          total_execs, get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
+          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %llu\n",
+          get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
-          unique_hangs, max_depth, eps); /* ignore errors */
+          unique_hangs, max_depth, eps, total_execs); /* ignore errors */
 
   fflush(plot_file);
 
@@ -8257,9 +8257,9 @@ EXP_ST void setup_dirs_fds(void) {
   plot_file = fdopen(fd, "w");
   if (!plot_file) PFATAL("fdopen() failed");
 
-  fprintf(plot_file, "# total_execs, unix_time, cycles_done, cur_path, paths_total, "
+  fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
-                     "unique_hangs, max_depth, execs_per_sec\n");
+                     "unique_hangs, max_depth, execs_per_sec, total_execs\n");
                      /* ignore errors */
 
 }
