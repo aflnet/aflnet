@@ -47,7 +47,12 @@ int main(int argc, char* argv[])
   else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
   else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
   else if (!strcmp(argv[2], "IPP")) extract_response_codes = &extract_response_codes_ipp;
-  else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
+  else if (!strcmp(argv[2], "SNMP")) extract_response_codes = &extract_response_codes_SNMP;
+  else if (!strcmp(argv[2], "TFTP")) extract_response_codes = &extract_response_codes_tftp;
+  else if (!strcmp(argv[2], "NTP")) extract_response_codes = &extract_response_codes_NTP;
+  else if (!strcmp(argv[2], "DHCP")) extract_response_codes = &extract_response_codes_dhcp;
+  else if (!strcmp(argv[2], "SNTP")) extract_response_codes = &extract_response_codes_SNTP;  
+else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
 
   portno = atoi(argv[3]);
 

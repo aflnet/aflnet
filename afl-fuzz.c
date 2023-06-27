@@ -9070,6 +9070,21 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "IPP")) {
           extract_requests = &extract_requests_ipp;
           extract_response_codes = &extract_response_codes_ipp;
+        } else if (!strcmp(optarg, "TFTP")) {
+          extract_requests = &extract_requests_tftp;
+          extract_response_codes = &extract_response_codes_tftp;
+        }else if (!strcmp(optarg, "DHCP")) {
+          extract_requests = &extract_requests_dhcp;
+          extract_response_codes = &extract_response_code_dhcp;
+        }else if (!strcmp(optarg, "SNTP")) {
+          extract_requests = &extract_requests_SNTP;
+          extract_response_codes = &extract_response_code_SNTP;
+        }else if (!strcmp(optarg, "NTP")) {
+          extract_requests = &extract_requests_NTP;
+          extract_response_codes = &extract_response_code_NTP;
+        }else if (!strcmp(optarg, "SNMP")) {
+          extract_requests = &extract_requests_SNMP;
+          extract_response_codes = &extract_response_code_SNMP;
         } else {
           FATAL("%s protocol is not supported yet!", optarg);
         }
