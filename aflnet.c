@@ -1236,7 +1236,7 @@ unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_s
   return state_sequence;
 }
 
-unsigned int* extract_response_code_dhcp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+unsigned int* extract_response_codes_dhcp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
   unsigned int byte_count = 0;
@@ -1297,7 +1297,7 @@ unsigned int* extract_response_code_dhcp(unsigned char* buf, unsigned int buf_si
   return state_sequence;
 }
 
-unsigned int* extract_response_code_SNTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
   unsigned int byte_count = 0;
@@ -1364,7 +1364,7 @@ unsigned int* extract_response_code_SNTP(unsigned char* buf, unsigned int buf_si
   return state_sequence;
 }
 
-unsigned int* extract_response_code_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
   unsigned int byte_count = 0;
@@ -1431,7 +1431,7 @@ unsigned int* extract_response_code_NTP(unsigned char* buf, unsigned int buf_siz
 }
 
 
-unsigned int* extract_response_code_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
   unsigned int byte_count = 0;
