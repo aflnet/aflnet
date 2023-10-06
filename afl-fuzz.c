@@ -140,8 +140,7 @@ EXP_ST u8  skip_deterministic,        /* Skip deterministic stages?       */
            deferred_mode,             /* Deferred forkserver mode?        */
            fast_cal;                  /* Try to calibrate faster?         */
 
-static s32 out_fd,                    /* Persistent fd for out_file       */
-           dev_urandom_fd = -1,       /* Persistent fd for /dev/urandom   */
+static s32 dev_urandom_fd = -1,       /* Persistent fd for /dev/urandom   */
            dev_null_fd = -1,          /* Persistent fd for /dev/null      */
            fsrv_ctl_fd,               /* Fork server control pipe (write) */
            fsrv_st_fd;                /* Fork server status pipe (read)   */
@@ -2931,11 +2930,6 @@ EXP_ST void init_forkserver(char** argv) {
 
       dup2(dev_null_fd, 0);
 
-    } else {
-
-      dup2(out_fd, 0);
-      close(out_fd);
-
     }
 
     /* Set up control and status pipes, close the unneeded original fds. */
@@ -3216,11 +3210,6 @@ static u8 run_target(char** argv, u32 timeout) {
       if (out_file) {
 
         dup2(dev_null_fd, 0);
-
-      } else {
-
-        dup2(out_fd, 0);
-        close(out_fd);
 
       }
 
@@ -8265,23 +8254,6 @@ EXP_ST void setup_dirs_fds(void) {
 }
 
 
-/* Setup the output file for fuzzed data, if not using -f. */
-
-EXP_ST void setup_stdio_file(void) {
-
-  u8* fn = alloc_printf("%s/.cur_input", out_dir);
-
-  unlink(fn); /* Ignore errors */
-
-  out_fd = open(fn, O_RDWR | O_CREAT | O_EXCL, 0600);
-
-  if (out_fd < 0) PFATAL("Unable to create '%s'", fn);
-
-  ck_free(fn);
-
-}
-
-
 /* Make sure that core dumps don't go to a program. */
 
 static void check_crash_handling(void) {
@@ -9225,8 +9197,6 @@ int main(int argc, char** argv) {
   if (!timeout_given) find_timeout();
 
   detect_file_args(argv + optind + 1);
-
-  if (!out_file) setup_stdio_file();
 
   check_binary(argv[optind]);
 
