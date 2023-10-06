@@ -90,8 +90,8 @@ int main(int argc, char* argv[])
   //if the server is still alive after processing all the requests
   struct timeval timeout;
 
-  timeout.tv_sec = 0;
-  timeout.tv_usec = socket_timeout;
+  timeout.tv_sec = socket_timeout / 1000000;
+  timeout.tv_usec = socket_timeout % 1000000;
 
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
