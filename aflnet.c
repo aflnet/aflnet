@@ -10,7 +10,7 @@
 
 #include "alloc-inl.h"
 #include "aflnet.h"
-
+#include "debug.h"
 // Protocol-specific functions for extracting requests and responses
 
 region_t* extract_requests_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
@@ -334,31 +334,57 @@ region_t* extract_requests_SNMP(unsigned char* buf, unsigned int buf_size, unsig
   unsigned int mem_count = 0;
   unsigned int mem_size = 1024;
   unsigned int region_count = 0;
+  unsigned int byte_count = 0;
   region_t *regions = NULL;
-  char terminator[1] = {0x0};
-  //char* terminator = '\0';
   mem = (char *)ck_alloc(mem_size);
 
   unsigned int cur_start = 0;
   unsigned int cur_end = 0;
-  for (unsigned int byte_count = 0; byte_count < buf_size; byte_count++) {
-    memcpy(&mem[mem_count], buf + byte_count, 1);
-    if ((mem_count > 1) && (memcmp(&mem[mem_count - 1], terminator, 1) == 0)){
-        region_count++;
-        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-        regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_end;
-        regions[region_count - 1].state_sequence = NULL;
-        regions[region_count - 1].state_count = 0;
+  while (byte_count < buf_size) {
 
+    memcpy(&mem[mem_count], buf + byte_count++, 1);
+
+    //Check if the region buffer length is at least 2 bytes (SNMP Message type Sequence)
+    if (mem_count >= 2) {
+      //1st byte: sequence type; identifier 0x30
+      //2nd byte: length
+      //Extract the message size stored in the 3rd byte and onwards
+      u16* size_buf = (u16*)&mem[1];
+      u16 message_size = (u16)ntohs(*size_buf);
+
+      //and skip the payload
+      unsigned int bytes_to_skip = message_size;
+
+      unsigned int temp_count = 0;
+      while ((byte_count < buf_size) && (temp_count < bytes_to_skip)) {
+        byte_count++;
+        cur_end++;
+        temp_count++;
+      }
+
+      if (byte_count < buf_size) {
+          byte_count--;
+          cur_end--;
+      }
+
+      //Create one region
+      region_count++;
+      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+      regions[region_count - 1].start_byte = cur_start;
+      regions[region_count - 1].end_byte = cur_end;
+      regions[region_count - 1].state_sequence = NULL;
+      regions[region_count - 1].state_count = 0;
+
+      //Check if the last byte has been reached
+      if (cur_end < buf_size - 1) {
         mem_count = 0;
         cur_start = cur_end + 1;
         cur_end = cur_start;
-
-    }
-    else {
+      }
+    } else {
       mem_count++;
       cur_end++;
+
       //Check if the last byte has been reached
       if (cur_end == buf_size - 1) {
         region_count++;
@@ -369,14 +395,13 @@ region_t* extract_requests_SNMP(unsigned char* buf, unsigned int buf_size, unsig
         regions[region_count - 1].state_count = 0;
         break;
       }
-      if (mem_count == mem_size) {
 
+      if (mem_count == mem_size) {
         //enlarge the mem buffer
         mem_size = mem_size * 2;
         mem=(char *)ck_realloc(mem, mem_size);
       }
     }
-    //ACTF("End of iteration");
   }
   if (mem) ck_free(mem);
   //in case region_count equals zero, it means that the structure of the buffer is broken
@@ -1453,6 +1478,7 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0;
 
+
   while (byte_count < buf_size) {
     memcpy(&mem[mem_count], buf + byte_count++, 1);
     
@@ -2221,7 +2247,6 @@ klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_cou
   for (i = 0; i < region_count; i++) {
     //Identify region size
     u32 len = regions[i].end_byte - regions[i].start_byte + 1;
-
     //Create a new message
     message_t *m = (message_t *) ck_alloc(sizeof(message_t));
     m->mdata = (char *) ck_alloc(len);
