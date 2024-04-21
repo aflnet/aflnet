@@ -21,3 +21,7 @@ afl-llvm-pass.so
 afl-llvm-rt-32.o
 afl-llvm-rt-64.o
 afl-llvm-rt.o
+
+spy-*/outputs
+spy-*/*.txt
+spy-*/*.out

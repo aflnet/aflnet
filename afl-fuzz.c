@@ -92,6 +92,8 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
+#include "afl-spy.h"
+
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
 
@@ -1025,7 +1027,8 @@ int send_over_network()
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout_usecs;
-  setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  if (qemu_mode != 2)
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
 
@@ -1054,7 +1057,7 @@ int send_over_network()
       if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) break;
       usleep(1000);
     }
-    if (n== 1000) {
+    if (n == 1000) {
       close(sockfd);
       return 1;
     }
@@ -1109,6 +1112,14 @@ HANDLE_RESPONSES:
   }
 
   close(sockfd);
+
+  if (qemu_mode == 2) {
+    if (terminate_child && (target_ctx != 0)) {
+      send_restart_target_request();
+    } else {
+      return 0;
+    }
+  }
 
   if (likely_buggy && false_negative_reduction) return 0;
 
@@ -2924,7 +2935,7 @@ EXP_ST void init_forkserver(char** argv) {
 
     setsid();
 
-    dup2(dev_null_fd, 1);
+    // dup2(dev_null_fd, 1);
     dup2(dev_null_fd, 2);
 
     if (out_file) {
@@ -2992,12 +3003,12 @@ EXP_ST void init_forkserver(char** argv) {
   fsrv_ctl_fd = ctl_pipe[1];
   fsrv_st_fd  = st_pipe[0];
 
-  /* Wait for the fork server to come up, but don't wait too long. */
-
-  it.it_value.tv_sec = ((exec_tmout * FORK_WAIT_MULT) / 1000);
-  it.it_value.tv_usec = ((exec_tmout * FORK_WAIT_MULT) % 1000) * 1000;
-
-  setitimer(ITIMER_REAL, &it, NULL);
+  /* Wait for the fork server to come up, but don't wait too long except for qemu system mode. */
+  if (qemu_mode != 2) {
+    it.it_value.tv_sec = ((exec_tmout * FORK_WAIT_MULT) / 1000);
+    it.it_value.tv_usec = ((exec_tmout * FORK_WAIT_MULT) % 1000) * 1000;
+    setitimer(ITIMER_REAL, &it, NULL);
+  }
 
   rlen = read(fsrv_st_fd, &status, 4);
 
@@ -3252,6 +3263,20 @@ static u8 run_target(char** argv, u32 timeout) {
 
     }
 
+  } else if (qemu_mode == 2) {
+    /* In qemu system mode, we don't need to fork a new process,
+       just send test_alive request to help set the target_ctx. */
+    send_test_alive_request();
+
+    /* Though it's not necessary, we read the target_ctx to help debug
+       and make sure that all is fine. */
+    s32 res;
+    if ((res = read(fsrv_st_fd, &target_ctx, 4)) != 4) {
+      if (stop_soon) return 0;
+      RPFATAL(res, "Unable to communicate with fork server (OOM?)");
+    } else {
+      OKF("Target context is %08x", target_ctx);
+    }
   } else {
 
     s32 res;
@@ -3282,13 +3307,20 @@ static u8 run_target(char** argv, u32 timeout) {
   it.it_value.tv_sec = (timeout / 1000);
   it.it_value.tv_usec = (timeout % 1000) * 1000;
 
-  setitimer(ITIMER_REAL, &it, NULL);
+  // setitimer(ITIMER_REAL, &it, NULL);
 
   /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
 
   if (dumb_mode == 1 || no_forkserver) {
     if (use_net) send_over_network();
     if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
+
+  } else if (qemu_mode == 2) {
+    *trace_enabled = 1;
+    if (use_net) send_over_network();
+    *trace_enabled = 0;
+    // set the status according to test alive script
+    status = send_test_alive_request();
 
   } else {
     if (use_net) send_over_network();
@@ -3333,6 +3365,18 @@ static u8 run_target(char** argv, u32 timeout) {
   prev_timed_out = child_timed_out;
 
   /* Report outcome to caller. */
+
+  if (qemu_mode == 2) {
+    if (status != ST_TEST_ALIVE && status != ST_TEST_FAILED && status != ST_TEST_TIMEOUT) {
+      OKF("Undefined status from test alive script: %d", status);
+    }
+    if (status == ST_TEST_FAILED || (test_timeout && status == ST_TEST_TIMEOUT))
+      return FAULT_CRASH;
+    else if (test_timeout && status != ST_TEST_TIMEOUT)
+      return FAULT_TMOUT;
+    else
+      return FAULT_NONE;
+  }
 
   if (WIFSIGNALED(status) && !stop_soon) {
 
@@ -7813,6 +7857,12 @@ static void handle_skipreq(int sig) {
 
 static void handle_timeout(int sig) {
 
+  if (qemu_mode == 2) {
+    test_timeout = 1;
+    OKF("Test timed out");
+    return;
+  }
+
   if (child_pid > 0) {
 
     child_timed_out = 1;
@@ -7884,8 +7934,8 @@ EXP_ST void check_binary(u8* fname) {
     if (!target_path) FATAL("Program '%s' not found or not executable", fname);
 
   }
-
-  if (getenv("AFL_SKIP_BIN_CHECK")) return;
+  // Skip binary check in qemu system mode
+  if (qemu_mode == 2 || getenv("AFL_SKIP_BIN_CHECK")) return;
 
   /* Check for blatant user errors. */
 
@@ -8671,6 +8721,11 @@ static char** get_qemu_argv(u8* own_loc, char** argv, int argc) {
   u8 *tmp, *cp, *rsl, *own_copy;
 
   /* Workaround for a QEMU stability glitch. */
+  if (qemu_mode == 2) {
+    // Use argv directly in qemu system mode
+    memcpy(new_argv, argv, sizeof(char*) * argc);
+    return new_argv;
+  }
 
   setenv("QEMU_LOG", "nochain", 1);
 
@@ -8993,8 +9048,8 @@ int main(int argc, char** argv) {
 
       case 'Q': /* QEMU mode */
 
-        if (qemu_mode) FATAL("Multiple -Q options not supported");
-        qemu_mode = 1;
+        if (qemu_mode == 2) FATAL("More than two -Q options not supported");
+        qemu_mode++;
 
         if (!mem_limit_given) mem_limit = MEM_LIMIT_QEMU;
 
@@ -9210,6 +9265,9 @@ int main(int argc, char** argv) {
 
   setup_post();
   setup_shm();
+  if (qemu_mode == 2) {
+    setup_shm_2();
+  }
   init_count_class16();
 
   setup_ipsm();
