@@ -2346,7 +2346,7 @@ int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
   pfd[0].events = POLLOUT;
   int rv = poll(pfd, 1, 1);
 
-  // setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
   if (rv > 0) {
     if (pfd[0].revents & POLLOUT) {
       while (byte_count < len) {
@@ -2369,7 +2369,7 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
   pfd[0].events = POLLIN;
   int rv = poll(pfd, 1, poll_w);
 
-  // setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
   // data received
   if (rv > 0) {
     if (pfd[0].revents & POLLIN) {

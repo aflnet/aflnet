@@ -5,8 +5,8 @@ CMD="pgrep $TARGET_PROC && (pgrep $TARGET_PROC | xargs kill -9); \
     systemctl restart $TARGET_SERVICE"
 
 curl 127.0.0.1:14817/execute \
-    -d "{\"cmd\": \"$CMD\"}"  \
-    --max-time 1.1
+    -d "{\"cmd\": \"$CMD\"}" > /dev/null 2>&1
+    # --max-time 2
 
 # (1)Use pgrep to check if the process is running before killing it
 # (2)Use systemctl reset-failed to reset the failed status of the service[IMPORTANT]

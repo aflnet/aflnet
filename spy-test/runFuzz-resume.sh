@@ -3,7 +3,7 @@ QEMUSPY=/home/czx/qemu-workspace/qemu-spy
 AFLSPY=$QEMUSPY/plugin_spy
 
 # gdbserver 127.0.0.1:1234 \
-../afl-fuzz -i ./inputs -o ./outputs -P HTTP -N tcp://127.0.0.1/18080 -m 4096M -QQ \
+../afl-fuzz -i - -o ./outputs -P HTTP -N tcp://127.0.0.1/18080 -m 4096M -QQ \
      -d -q 3 -s 3 -E -R -W 3\
      -- \
      $QEMUSPY/build/qemu-system-arm \

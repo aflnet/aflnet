@@ -92,7 +92,6 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
-#include "afl-spy.h"
 
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
@@ -352,6 +351,9 @@ char** use_argv;  /* argument to run the target program. In vanilla AFL, this is
 static u8 run_target(char** argv, u32 timeout);
 static inline u32 UR(u32 limit);
 static inline u8 has_new_bits(u8* virgin_map);
+
+/* AFLSpy-specific variables * functions */
+#include "afl-spy.h"
 
 /* AFLNet-specific variables & functions */
 
@@ -1049,7 +1051,6 @@ int send_over_network()
       FATAL("Unable to bind socket on local source port");
     }
   }
-
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
     //If it cannot connect to the server under test
     //try it again as the server initial startup time is varied
@@ -1069,7 +1070,6 @@ int send_over_network()
   //write the request messages
   kliter_t(lms) *it;
   messages_sent = 0;
-
   for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
     n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
     messages_sent++;
@@ -1087,7 +1087,6 @@ int send_over_network()
     if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) {
       goto HANDLE_RESPONSES;
     }
-
     //Update accumulated response buffer size
     response_bytes[messages_sent - 1] = response_buf_size;
 
@@ -1098,9 +1097,7 @@ int send_over_network()
   }
 
 HANDLE_RESPONSES:
-
   net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
-
   if (messages_sent > 0 && response_bytes != NULL) {
     response_bytes[messages_sent - 1] = response_buf_size;
   }
@@ -1112,13 +1109,8 @@ HANDLE_RESPONSES:
   }
 
   close(sockfd);
-
   if (qemu_mode == 2) {
-    if (terminate_child && (target_ctx != 0)) {
-      send_restart_target_request();
-    } else {
       return 0;
-    }
   }
 
   if (likely_buggy && false_negative_reduction) return 0;
@@ -3004,11 +2996,25 @@ EXP_ST void init_forkserver(char** argv) {
   fsrv_st_fd  = st_pipe[0];
 
   /* Wait for the fork server to come up, but don't wait too long except for qemu system mode. */
-  if (qemu_mode != 2) {
-    it.it_value.tv_sec = ((exec_tmout * FORK_WAIT_MULT) / 1000);
-    it.it_value.tv_usec = ((exec_tmout * FORK_WAIT_MULT) % 1000) * 1000;
-    setitimer(ITIMER_REAL, &it, NULL);
+  if (qemu_mode == 2) {
+    rlen = read(fsrv_st_fd, &status, 4);
+    if (rlen != 4 || strncmp((char*)&status, "RDY!", 4) != 0) {
+        FATAL("Unexpected response from the fork server: %s", (char*)&status);
+    }
+
+    detect_agent();
+    printf("First:");
+    detect_target();
+    printf("Restart:");
+    restart_target(); // Use restart_target here to make sure restart script is OK.
+
+    OKF("All right - fork server is up.");
+    return;
   }
+
+  it.it_value.tv_sec = ((exec_tmout * FORK_WAIT_MULT) / 1000);
+  it.it_value.tv_usec = ((exec_tmout * FORK_WAIT_MULT) % 1000) * 1000;
+  setitimer(ITIMER_REAL, &it, NULL);
 
   rlen = read(fsrv_st_fd, &status, 4);
 
@@ -3265,17 +3271,14 @@ static u8 run_target(char** argv, u32 timeout) {
 
   } else if (qemu_mode == 2) {
     /* In qemu system mode, we don't need to fork a new process,
-       just send test_alive request to help set the target_ctx. */
-    send_test_alive_request();
-
-    /* Though it's not necessary, we read the target_ctx to help debug
-       and make sure that all is fine. */
-    s32 res;
-    if ((res = read(fsrv_st_fd, &target_ctx, 4)) != 4) {
-      if (stop_soon) return 0;
-      RPFATAL(res, "Unable to communicate with fork server (OOM?)");
+       just make sure the target under test is alive. */
+    if (terminate_child) {
+      restart_target();
     } else {
-      OKF("Target context is %08x", target_ctx);
+      status = test_alive();
+      if (status != ST_TEST_ALIVE) {
+        restart_target();
+      }
     }
   } else {
 
@@ -3307,7 +3310,7 @@ static u8 run_target(char** argv, u32 timeout) {
   it.it_value.tv_sec = (timeout / 1000);
   it.it_value.tv_usec = (timeout % 1000) * 1000;
 
-  // setitimer(ITIMER_REAL, &it, NULL);
+  setitimer(ITIMER_REAL, &it, NULL); // commented for debuging.
 
   /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
 
@@ -3317,10 +3320,12 @@ static u8 run_target(char** argv, u32 timeout) {
 
   } else if (qemu_mode == 2) {
     *trace_enabled = 1;
+    MEM_BARRIER();
     if (use_net) send_over_network();
+    MEM_BARRIER();
     *trace_enabled = 0;
-    // set the status according to test alive script
-    status = send_test_alive_request();
+    // Check the status of the target here instead of receiving it from qemu-spy.
+    status = test_alive();
 
   } else {
     if (use_net) send_over_network();
@@ -9296,7 +9301,6 @@ int main(int argc, char** argv) {
     use_argv = argv + optind;
 
   perform_dry_run(use_argv);
-
   cull_queue();
 
   show_init_stats();
