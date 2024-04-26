@@ -1029,8 +1029,8 @@ int send_over_network()
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout_usecs;
-  if (qemu_mode != 2)
-    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+
+  setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
 
@@ -1062,6 +1062,15 @@ int send_over_network()
       close(sockfd);
       return 1;
     }
+  }
+
+  if (ssl_enabled) {
+      if (SSL_set_fd(ssl, sockfd) != 1) {
+        FATAL("Cannot associate SSL with socket");
+      }
+      if (SSL_connect(ssl) != 1) {
+        FATAL("Cannot establish SSL connection");
+      }
   }
 
   //retrieve early server response if needed
@@ -1108,6 +1117,10 @@ HANDLE_RESPONSES:
     if (has_new_bits(session_virgin_bits) != 2) break;
   }
 
+  if (ssl_enabled) {
+    SSL_shutdown(ssl);
+    SSL_clear(ssl);
+  }
   close(sockfd);
   if (qemu_mode == 2) {
       return 0;
@@ -3003,9 +3016,7 @@ EXP_ST void init_forkserver(char** argv) {
     }
 
     detect_agent();
-    printf("First:");
     detect_target();
-    printf("Restart:");
     restart_target(); // Use restart_target here to make sure restart script is OK.
 
     OKF("All right - fork server is up.");
@@ -3272,14 +3283,6 @@ static u8 run_target(char** argv, u32 timeout) {
   } else if (qemu_mode == 2) {
     /* In qemu system mode, we don't need to fork a new process,
        just make sure the target under test is alive. */
-    if (terminate_child) {
-      restart_target();
-    } else {
-      status = test_alive();
-      if (status != ST_TEST_ALIVE) {
-        restart_target();
-      }
-    }
   } else {
 
     s32 res;
@@ -3375,12 +3378,17 @@ static u8 run_target(char** argv, u32 timeout) {
     if (status != ST_TEST_ALIVE && status != ST_TEST_FAILED && status != ST_TEST_TIMEOUT) {
       OKF("Undefined status from test alive script: %d", status);
     }
-    if (status == ST_TEST_FAILED || (test_timeout && status == ST_TEST_TIMEOUT))
+
+    // Make sure target is alive for next test.
+    if (status != ST_TEST_ALIVE) restart_target();
+
+    if (status == ST_TEST_FAILED || (test_timeout && status == ST_TEST_TIMEOUT)) {
       return FAULT_CRASH;
-    else if (test_timeout && status != ST_TEST_TIMEOUT)
+    } else if (test_timeout && status == ST_TEST_ALIVE) {
       return FAULT_TMOUT;
-    else
+    } else {
       return FAULT_NONE;
+    }
   }
 
   if (WIFSIGNALED(status) && !stop_soon) {
@@ -9127,6 +9135,10 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "HTTP")) {
           extract_requests = &extract_requests_http;
           extract_response_codes = &extract_response_codes_http;
+        } else if (!strcmp(optarg, "HTTPS")) {
+          extract_requests = &extract_requests_http; // the same as HTTP
+          extract_response_codes = &extract_response_codes_http;
+          setup_ssl();
         } else if (!strcmp(optarg, "IPP")) {
           extract_requests = &extract_requests_ipp;
           extract_response_codes = &extract_response_codes_ipp;

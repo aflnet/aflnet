@@ -3,6 +3,7 @@
         "*.m": "matlab",
         "aflnet.h": "c",
         "alloc-inl.h": "c",
-        "config.h": "c"
+        "config.h": "c",
+        "ssl.h": "c"
     }
 }

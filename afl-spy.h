@@ -1,17 +1,15 @@
-#define TEST_ALIVE_SCRIPT "/home/czx/afl-workspace/aflnet/spy-test/scripts/test_alive.sh"
-#define TEST_AGENT_SCRIPT "/home/czx/afl-workspace/aflnet/spy-test/scripts/test_agent.sh"
-#define RESTART_TARGET_SCRIPT "/home/czx/afl-workspace/aflnet/spy-test/scripts/restart_target.sh"
+#include <openssl/ssl.h>
 
-#define AFL_LOGFILE "/home/czx/afl-workspace/aflnet/spy-test/afl_log.txt"
+#define DEFAULT_TEST_ALIVE_SCRIPT "scripts/test_alive.sh"
+#define DEFAULT_TEST_AGENT_SCRIPT "scripts/test_agent.sh"
+#define DEFAULT_RESTART_TARGET_SCRIPT "scripts/restart_target.sh"
 
 #define SHM_ENV_VAR_2         "__AFL_SHM_ID_2"
 
 #define ST_TEST_ALIVE   0   // target is alive
 #define ST_TEST_FAILED  7   // connection failed which should never happen
 #define ST_TEST_TIMEOUT 28  // target blocked or crashed
-
 #define ST_RESTART_SUCCESS   0
-
 
 
 // Though it's not recommended to define a global variable in a header file,
@@ -19,6 +17,10 @@
 static uint32_t target_ctx = 0;
 static uint32_t agent_ctx = 0;
 static volatile u8 test_timeout = 0;
+
+static SSL_CTX *ssl_ctx = NULL;
+SSL *ssl = NULL;
+u8 ssl_enabled = 0;
 
 static u8* trace_enabled;
 static s32 shm_id_2;                    /* ID of the SHM region used as trace_enable   */
@@ -51,7 +53,36 @@ EXP_ST void setup_shm_2(void) {
     if (trace_enabled == (void *)-1) PFATAL("shmat() failed");
 }
 
+static void free_ssl_resource(void) {
+    if (ssl) {
+        SSL_free(ssl);
+        SSL_CTX_free(SSL_get_SSL_CTX(ssl));
+    }
+}
+
+EXP_ST void setup_ssl(void) {
+    ssl_enabled = 1;
+    SSL_library_init();
+    ssl_ctx = SSL_CTX_new(TLS_client_method());
+    if (ssl_ctx == NULL) {
+        FATAL("SSL_CTX_new failed");
+    }
+    ssl = SSL_new(ssl_ctx);
+    if (ssl == NULL) {
+        FATAL("SSL_new failed");
+    }
+    atexit(free_ssl_resource);
+}
+
 int send_test_alive_request() {
+    static char* test_alive_script = NULL;
+    if (test_alive_script == NULL) {
+        test_alive_script = getenv("TEST_ALIVE_SCRIPT");
+        if (test_alive_script == NULL) {
+            test_alive_script = DEFAULT_TEST_ALIVE_SCRIPT;
+        }
+        OKF("Test Alive script is %s", test_alive_script);
+    }
     static char* buf = NULL;
     if (buf == NULL) {
         buf = (char*)malloc(1024);
@@ -59,22 +90,32 @@ int send_test_alive_request() {
         if (buf == NULL) {
             FATAL("Unable to allocate memory");
         }
-        FILE *fd = fopen(TEST_ALIVE_SCRIPT, "r");
+        FILE *fd = fopen(test_alive_script, "r");
         if (fd == NULL) {
-            FATAL("Unable to open %s", TEST_ALIVE_SCRIPT);
+            FATAL("Unable to open %s", test_alive_script);
         }
         fread(buf, 1, 1024, fd);
         fclose(fd);
         
     }
     int res = system(buf);
+    static int count = 0;
+    count++;
     if (res != 0) {
-      OKF("Test Alive timed out\n");
+      OKF("Test Alive timed out, res = %d, count = %d\n", res, count);
     }
     return res;
 }
 
 int send_test_agent_request() {
+    static char* test_agent_script = NULL;
+    if (test_agent_script == NULL) {
+        test_agent_script = getenv("TEST_AGENT_SCRIPT");
+        if (test_agent_script == NULL) {
+            test_agent_script = DEFAULT_TEST_AGENT_SCRIPT;
+        }
+        OKF("Test Agent script is %s", test_agent_script);
+    }
     static char* buf = NULL;
     if (buf == NULL) {
         buf = (char*)malloc(1024);
@@ -82,9 +123,9 @@ int send_test_agent_request() {
         if (buf == NULL) {
             FATAL("Unable to allocate memory");
         }
-        FILE *fd = fopen(TEST_AGENT_SCRIPT, "r");
+        FILE *fd = fopen(test_agent_script, "r");
         if (fd == NULL) {
-            FATAL("Unable to open %s", TEST_AGENT_SCRIPT);
+            FATAL("Unable to open %s", test_agent_script);
         }
         fread(buf, 1, 1024, fd);
         fclose(fd);
@@ -97,6 +138,14 @@ int send_test_agent_request() {
 }
 
 int send_restart_target_request() {
+    static char* restart_target_script = NULL;
+    if (restart_target_script == NULL) {
+        restart_target_script = getenv("RESTART_TARGET_SCRIPT");
+        if (restart_target_script == NULL) {
+            restart_target_script = DEFAULT_RESTART_TARGET_SCRIPT;
+        }
+        OKF("Restart Target script is %s", restart_target_script);
+    }
     static char* buf = NULL;
     if (buf == NULL) {
         buf = (char*)malloc(1024);
@@ -104,9 +153,9 @@ int send_restart_target_request() {
         if (buf == NULL) {
             FATAL("Unable to allocate memory");
         }
-        FILE *fd = fopen(RESTART_TARGET_SCRIPT, "r");
+        FILE *fd = fopen(restart_target_script, "r");
         if (fd == NULL) {
-            FATAL("Unable to open %s", RESTART_TARGET_SCRIPT);
+            FATAL("Unable to open %s", restart_target_script);
         }
         fread(buf, 1, 1024, fd);
         fclose(fd);

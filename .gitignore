@@ -12,6 +12,7 @@ afl-showmap
 afl-tmin
 aflnet-replay
 aflnet.o
+aflnet-ssl.o
 as
 
 # Binaries produced by "make -C llvm_mode"

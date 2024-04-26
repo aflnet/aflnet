@@ -1,5 +1,5 @@
 TARGET_PROC=hello-crow
-TARGET_SERVICE=hello.service
+TARGET_SERVICE=hello-crow.service
 CMD="pgrep $TARGET_PROC && (pgrep $TARGET_PROC | xargs kill -9); \
     systemctl reset-failed && \
     systemctl restart $TARGET_SERVICE"
