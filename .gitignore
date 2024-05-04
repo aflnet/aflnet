@@ -26,3 +26,10 @@ afl-llvm-rt.o
 spy-*/outputs
 spy-*/*.txt
 spy-*/*.out
+
+qemu_mode/qemu-2.10.0.tar.xz
+qemu_mode/qemu-2.10.0/
+
+afl-qemu-trace
+afl-spy-logs/
+*.log

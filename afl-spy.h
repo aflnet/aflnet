@@ -4,7 +4,7 @@
 #define DEFAULT_TEST_AGENT_SCRIPT "scripts/test_agent.sh"
 #define DEFAULT_RESTART_TARGET_SCRIPT "scripts/restart_target.sh"
 
-#define SHM_ENV_VAR_2         "__AFL_SHM_ID_2"
+#define SHM_ENV_VAR_SPY         "__AFL_SHM_ID_SPY"
 
 #define ST_TEST_ALIVE   0   // target is alive
 #define ST_TEST_FAILED  7   // connection failed which should never happen
@@ -22,8 +22,16 @@ static SSL_CTX *ssl_ctx = NULL;
 SSL *ssl = NULL;
 u8 ssl_enabled = 0;
 
-static u8* trace_enabled;
-static s32 shm_id_2;                    /* ID of the SHM region used as trace_enable   */
+struct SpySignal {
+    u8 trace_enabled;
+    u8 next_step;
+};
+
+static struct SpySignal* spy_signal;
+
+static s32 shm_id_spy;                    /* ID of the SHM region used as trace_enable   */
+
+static char* log_dir = NULL;
 
 static void stop_qemu_system() {
     if (qemu_mode == 2) {
@@ -32,25 +40,44 @@ static void stop_qemu_system() {
     }
 }
 
-static void remove_shm_2(void) {
-    shmctl(shm_id_2, IPC_RMID, NULL);
+static void remove_shm_spy(void) {
+    shmctl(shm_id_spy, IPC_RMID, NULL);
 }
 
-EXP_ST void setup_shm_2(void) {
-    u8* shm_str_2;
-    shm_id_2 = shmget(IPC_PRIVATE, sizeof(u8), IPC_CREAT | IPC_EXCL | 0600);
-    if (shm_id_2 < 0) PFATAL("shmget() failed");
+EXP_ST void setup_shm_spy(void) {
+    u8* shm_str_spy;
+    shm_id_spy = shmget(IPC_PRIVATE, sizeof(struct SpySignal), IPC_CREAT | IPC_EXCL | 0600);
+    if (shm_id_spy < 0) PFATAL("shmget() failed");
 
-    atexit(remove_shm_2);
+    atexit(remove_shm_spy);
     atexit(stop_qemu_system);
 
-    shm_str_2 = alloc_printf("%d", shm_id_2);
-    setenv(SHM_ENV_VAR_2, shm_str_2, 1);
-    ck_free(shm_str_2);
+    shm_str_spy = alloc_printf("%d", shm_id_spy);
+    setenv(SHM_ENV_VAR_SPY, shm_str_spy, 1);
+    ck_free(shm_str_spy);
 
-    trace_enabled = shmat(shm_id_2, NULL, 0);
+    spy_signal = shmat(shm_id_spy, NULL, 0);
 
-    if (trace_enabled == (void *)-1) PFATAL("shmat() failed");
+    if (spy_signal == (void *)-1) PFATAL("shmat() failed");
+
+    log_dir = getenv("AFL_LOG_DIR");
+    if (log_dir == NULL) {
+        log_dir = "afl-spy-logs/";
+    }
+
+    char cmd[1024];
+
+    memset(cmd, 0, 1024);
+    snprintf(cmd, 1024, "rm -rf %s", log_dir);
+    if (system(cmd) != 0) {
+        FATAL("Unable to remove log directory");
+    }
+
+    memset(cmd, 0, 1024);
+    snprintf(cmd, 1024, "mkdir -p %s", log_dir);
+    if (system(cmd) != 0) {
+        FATAL("Unable to create log directory");
+    }
 }
 
 static void free_ssl_resource(void) {

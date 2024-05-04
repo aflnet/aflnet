@@ -30,7 +30,7 @@
 
 
 VERSION="2.10.0"
-QEMU_URL="http://download.qemu-project.org/qemu-${VERSION}.tar.xz"
+QEMU_URL="http://download.qemu.org/qemu-${VERSION}.tar.xz"
 QEMU_SHA384="68216c935487bc8c0596ac309e1e3ee75c2c4ce898aab796faa321db5740609ced365fedda025678d072d09ac8928105"
 
 echo "================================================="
@@ -137,6 +137,8 @@ echo "[*] Applying patches..."
 patch -p1 <../patches/elfload.diff || exit 1
 patch -p1 <../patches/cpu-exec.diff || exit 1
 patch -p1 <../patches/syscall.diff || exit 1
+patch -p1 <../patches/syscall_1.diff || exit 1
+patch -p1 <../patches/syscall_2.diff || exit 1
 patch -p1 <../patches/configure.diff || exit 1
 patch -p1 <../patches/memfd.diff || exit 1
 
@@ -145,7 +147,7 @@ echo "[+] Patching done."
 # --enable-pie seems to give a couple of exec's a second performance
 # improvement, much to my surprise. Not sure how universal this is..
 
-CFLAGS="-O3 -ggdb" ./configure --disable-system \
+CFLAGS="-O3 -ggdb" ./configure --disable-system --python=/usr/bin/python2.7 \
   --enable-linux-user --disable-gtk --disable-sdl --disable-vnc \
   --target-list="${CPU_TARGET}-linux-user" --enable-pie --enable-kvm || exit 1
 

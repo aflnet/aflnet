@@ -3176,7 +3176,6 @@ EXP_ST void init_forkserver(char** argv) {
    information. The called program will update trace_bits[]. */
 
 static u8 run_target(char** argv, u32 timeout) {
-
   static struct itimerval it;
   static u32 prev_timed_out = 0;
   static u64 exec_ms = 0;
@@ -3185,7 +3184,11 @@ static u8 run_target(char** argv, u32 timeout) {
   u32 tb4;
 
   child_timed_out = 0;
-
+  if(qemu_mode == 2) {
+    spy_signal->trace_enabled = 1;
+    spy_signal->next_step = 0;
+  }
+  
   /* After this memset, trace_bits[] are effectively volatile, so we
      must prevent any earlier operations from venturing into that
      territory. */
@@ -3282,7 +3285,7 @@ static u8 run_target(char** argv, u32 timeout) {
 
   } else if (qemu_mode == 2) {
     /* In qemu system mode, we don't need to fork a new process,
-       just make sure the target under test is alive. */
+       just make sure the target under test is alive and ready to receive test case. */
   } else {
 
     s32 res;
@@ -3322,12 +3325,52 @@ static u8 run_target(char** argv, u32 timeout) {
     if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
 
   } else if (qemu_mode == 2) {
-    *trace_enabled = 1;
-    MEM_BARRIER();
     if (use_net) send_over_network();
-    MEM_BARRIER();
-    *trace_enabled = 0;
     // Check the status of the target here instead of receiving it from qemu-spy.
+    int count = 0;
+    test_timeout = 0;
+    while (spy_signal->next_step != 1) {
+      usleep(1000);
+      if (count++ > 100) {
+        test_timeout = 1;
+        break;
+      }
+    }
+    spy_signal->next_step = 0;
+    spy_signal->trace_enabled = 0;
+    
+    // log the trace bits
+    if(log_dir) {
+      static int count1 = 0;
+      count1++;
+      if (count1 < 500) {
+        char *log_file = alloc_printf("%s/trace_bits_%d.txt", log_dir, count1);
+        FILE* fp = fopen(log_file, "w");
+        if (fp == NULL) {
+          FATAL("Cannot open log file");
+        }
+        
+        int count2 = 0;
+        for (int i = 0; i < MAP_SIZE; i++) {
+          if (trace_bits[i] > 0) {
+              count2++;
+          }
+        }
+        fprintf(fp, "count: %d count1: %d count2: %d\n", count, count1, count2);
+        for (int i = 0; i < MAP_SIZE; i++) {
+          if (trace_bits[i] > 0) {
+              fprintf(fp, "trace_bits[%d]: %d\n", i, trace_bits[i]);
+          }
+        }
+        fclose(fp);
+      }
+      
+
+      // if (count1 == 500) {
+      //   OKF("100 trace bits logs have been generated");
+      //   exit(0);
+      // }
+    }
     status = test_alive();
 
   } else {
@@ -3477,7 +3520,6 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
   if (q->exec_cksum) memcpy(first_trace, trace_bits, MAP_SIZE);
 
   start_us = get_cur_time_us();
-
   for (stage_cur = 0; stage_cur < stage_max; stage_cur++) {
 
     u32 cksum;
@@ -3487,7 +3529,6 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
     write_to_testcase(use_mem, q->len);
 
     fault = run_target(argv, use_tmout);
-
     /* stop_soon is set by the handler for Ctrl+C. When it's pressed,
        we want to bail out quickly. */
 
@@ -3498,8 +3539,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
       goto abort_calibration;
     }
 
-    cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+    // if (test_timeout == 1) break;
 
+    cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
     if (q->exec_cksum != cksum) {
 
       u8 hnb = has_new_bits(virgin_bits);
@@ -5539,6 +5581,9 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   /* End of AFLNet code */
 
   fault = run_target(argv, exec_tmout);
+  if(qemu_mode == 2) {
+    // if (test_timeout == 1) return 0;
+  }
 
   //Update fuzz count, no matter whether the generated test is interesting or not
   if (state_aware_mode) update_fuzzs();
@@ -8734,13 +8779,12 @@ static char** get_qemu_argv(u8* own_loc, char** argv, int argc) {
   u8 *tmp, *cp, *rsl, *own_copy;
 
   /* Workaround for a QEMU stability glitch. */
+  setenv("QEMU_LOG", "nochain", 1);
   if (qemu_mode == 2) {
     // Use argv directly in qemu system mode
     memcpy(new_argv, argv, sizeof(char*) * argc);
     return new_argv;
   }
-
-  setenv("QEMU_LOG", "nochain", 1);
 
   memcpy(new_argv + 3, argv + 1, sizeof(char*) * argc);
 
@@ -9283,7 +9327,7 @@ int main(int argc, char** argv) {
   setup_post();
   setup_shm();
   if (qemu_mode == 2) {
-    setup_shm_2();
+    setup_shm_spy();
   }
   init_count_class16();
 
