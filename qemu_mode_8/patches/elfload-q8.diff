@@ -1,0 +1,34 @@
+diff --git a/qemu_mode/qemu-8.2.0/linux-user/elfload.c b/qemu_mode/qemu-8.2.0/linux-user/elfload.c
+index cf9e744..2ce4294 100644
+--- qemu-8.2.0/linux-user/elfload.c
++++ qemu-8.2.0/linux-user/elfload.c
+@@ -41,6 +41,8 @@
+ #define TARGET_ARCH_HAS_SIGTRAMP_PAGE 0
+ #endif
+ 
++extern abi_ulong afl_entry_point, afl_start_code, afl_end_code;
++
+ typedef struct {
+     const uint8_t *image;
+     const uint32_t *relocs;
+@@ -3462,6 +3464,8 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
+     }
+ #endif
+ 
++    if (!afl_entry_point) afl_entry_point = info->entry;
++
+     for (i = 0; i < ehdr->e_phnum; i++) {
+         struct elf_phdr *eppnt = phdr + i;
+         if (eppnt->p_type == PT_LOAD) {
+@@ -3508,9 +3512,11 @@ static void load_elf_image(const char *image_name, const ImageSource *src,
+             if (elf_prot & PROT_EXEC) {
+                 if (vaddr < info->start_code) {
+                     info->start_code = vaddr;
++                    if (!afl_start_code) afl_start_code = vaddr;
+                 }
+                 if (vaddr_ef > info->end_code) {
+                     info->end_code = vaddr_ef;
++                    if (!afl_end_code) afl_end_code = vaddr_ef;
+                 }
+             }
+             if (elf_prot & PROT_WRITE) {

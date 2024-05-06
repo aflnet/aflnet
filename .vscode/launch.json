@@ -270,6 +270,16 @@
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 },
+                {
+                    "description": "Set detach-on-fork off",
+                    "text": "set detach-on-fork off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set follow-fork-mode child",
+                    "text": "set follow-fork-mode child",
+                    "ignoreFailures": true
+                }
             ]
         },
     ]

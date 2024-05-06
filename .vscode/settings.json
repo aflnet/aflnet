@@ -4,6 +4,9 @@
         "aflnet.h": "c",
         "alloc-inl.h": "c",
         "config.h": "c",
-        "ssl.h": "c"
+        "ssl.h": "c",
+        "bitset": "c",
+        "chrono": "c",
+        "algorithm": "c"
     }
 }

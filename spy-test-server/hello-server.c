@@ -27,8 +27,6 @@ int main() {
     socklen_t clientLength;
     char buffer[BUFFER_SIZE];
 
-    
-
     while (1) {
         // 创建套接字
         serverSocket = socket(AF_INET, SOCK_STREAM, 0);

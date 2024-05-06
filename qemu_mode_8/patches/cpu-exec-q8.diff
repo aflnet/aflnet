@@ -1,0 +1,30 @@
+diff --git a/qemu_mode/qemu-8.2.0/accel/tcg/cpu-exec.c b/qemu_mode/qemu-8.2.0/accel/tcg/cpu-exec.c
+index c938eb9..681d06e 100644
+--- qemu-8.2.0/accel/tcg/cpu-exec.c
++++ qemu-8.2.0/accel/tcg/cpu-exec.c
+@@ -45,6 +45,8 @@
+ #include "internal-common.h"
+ #include "internal-target.h"
+ 
++#include "../patches/afl-qemu-cpu-inl-q8.h"
++
+ /* -icount align implementation. */
+ 
+ typedef struct SyncClocks {
+@@ -266,6 +268,7 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, vaddr pc,
+         }
+         tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+         if (tb == NULL) {
++            AFL_QEMU_CPU_SNIPPET1;
+             return NULL;
+         }
+         jc->array[hash].pc = pc;
+@@ -450,6 +453,8 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
+     TranslationBlock *last_tb;
+     const void *tb_ptr = itb->tc.ptr;
+ 
++    AFL_QEMU_CPU_SNIPPET2;
++
+     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
+         log_cpu_exec(log_pc(cpu, itb), cpu, itb);
+     }

@@ -249,3 +249,37 @@ static void restart_target() {
     }
     read_target_ctx();
 }
+
+static void log_trace_bits(int count) {
+    if(log_dir) {
+      static int count1 = 0;
+      count1++;
+    //   if (count1 < 500) {
+        char *log_file = alloc_printf("%s/trace_bits_%d.txt", log_dir, count1);
+        FILE* fp = fopen(log_file, "w");
+        if (fp == NULL) {
+          FATAL("Cannot open log file");
+        }
+        
+        int count2 = 0;
+        for (int i = 0; i < MAP_SIZE; i++) {
+          if (trace_bits[i] > 0) {
+              count2++;
+          }
+        }
+        fprintf(fp, "wait_count: %d test_num: %d non0bytes_num: %d\n", count, count1, count2);
+        for (int i = 0; i < MAP_SIZE; i++) {
+          if (trace_bits[i] > 0) {
+              fprintf(fp, "trace_bits[%d]: %d\n", i, trace_bits[i]);
+          }
+        }
+        fclose(fp);
+    //   }
+      
+
+      if (count1 == 100) {
+        OKF("100 trace bits logs have been generated");
+        exit(0);
+      }
+    }
+}

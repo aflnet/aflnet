@@ -3340,37 +3340,7 @@ static u8 run_target(char** argv, u32 timeout) {
     spy_signal->trace_enabled = 0;
     
     // log the trace bits
-    if(log_dir) {
-      static int count1 = 0;
-      count1++;
-      if (count1 < 500) {
-        char *log_file = alloc_printf("%s/trace_bits_%d.txt", log_dir, count1);
-        FILE* fp = fopen(log_file, "w");
-        if (fp == NULL) {
-          FATAL("Cannot open log file");
-        }
-        
-        int count2 = 0;
-        for (int i = 0; i < MAP_SIZE; i++) {
-          if (trace_bits[i] > 0) {
-              count2++;
-          }
-        }
-        fprintf(fp, "count: %d count1: %d count2: %d\n", count, count1, count2);
-        for (int i = 0; i < MAP_SIZE; i++) {
-          if (trace_bits[i] > 0) {
-              fprintf(fp, "trace_bits[%d]: %d\n", i, trace_bits[i]);
-          }
-        }
-        fclose(fp);
-      }
-      
-
-      // if (count1 == 500) {
-      //   OKF("100 trace bits logs have been generated");
-      //   exit(0);
-      // }
-    }
+    log_trace_bits(count);
     status = test_alive();
 
   } else {
@@ -3404,7 +3374,7 @@ static u8 run_target(char** argv, u32 timeout) {
      very normally and do not have to be treated as volatile. */
 
   MEM_BARRIER();
-
+  log_trace_bits(0);
   tb4 = *(u32*)trace_bits;
 
 #ifdef WORD_SIZE_64
@@ -9326,9 +9296,9 @@ int main(int argc, char** argv) {
 
   setup_post();
   setup_shm();
-  if (qemu_mode == 2) {
+  // if (qemu_mode == 2) {
     setup_shm_spy();
-  }
+  // }
   init_count_class16();
 
   setup_ipsm();

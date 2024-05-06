@@ -27,8 +27,8 @@ spy-*/outputs
 spy-*/*.txt
 spy-*/*.out
 
-qemu_mode/qemu-2.10.0.tar.xz
-qemu_mode/qemu-2.10.0/
+qemu_mode*/qemu-*.tar.xz
+qemu_mode*/qemu-*/
 
 afl-qemu-trace
 afl-spy-logs/

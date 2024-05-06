@@ -123,6 +123,8 @@ tar xf "$ARCHIVE" || exit 1
 
 echo "[+] Unpacking successful."
 
+CPU_TARGET=arm
+
 echo "[*] Configuring QEMU for $CPU_TARGET..."
 
 ORIG_CPU_TARGET="$CPU_TARGET"

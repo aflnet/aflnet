@@ -4,7 +4,7 @@ AFLSPY=$QEMUSPY/plugin_spy
 
 # gdbserver 127.0.0.1:1234 \
 ../afl-fuzz -i ./inputs -o ./outputs -P HTTP -N tcp://127.0.0.1/18080 -m 4096M -QQ \
-     -d -q 3 -s 3 -R -W 2 -w 1000 -t 10000 \
+     -d -q 3 -s 3 -R -W 2 -w 1000 -t 30000 \
      -- \
      $QEMUSPY/build/qemu-system-arm \
     -m 256 -machine romulus-bmc \
