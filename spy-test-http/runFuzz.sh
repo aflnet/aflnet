@@ -11,7 +11,7 @@ AFLSPY=$QEMUSPY/plugin_spy
     -drive file=$KERN/obmc-phosphor-image-romulus.static.mtd,if=mtd,format=raw\
     -net nic \
     -net user,hostfwd=:127.0.0.1:2222-:22,hostfwd=:127.0.0.1:2443-:443,hostfwd=:127.0.0.1:18080-:8080,hostfwd=:127.0.0.1:14817-:4817,hostfwd=udp:127.0.0.1:2623-:623,hostname=qemu \
-    -d plugin \
+    -d plugin,nochain \
     -plugin $AFLSPY/build/libaflspy.so \
     -D qemu_log.txt \
     -nographic \
