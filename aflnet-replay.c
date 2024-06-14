@@ -38,6 +38,7 @@ int main(int argc, char* argv[])
 
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
+  else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
   else if (!strcmp(argv[2], "DNS")) extract_response_codes = &extract_response_codes_dns;
   else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else if (!strcmp(argv[2], "DICOM")) extract_response_codes = &extract_response_codes_dicom;
