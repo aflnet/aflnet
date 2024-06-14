@@ -2062,8 +2062,8 @@ unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_si
 
   while (byte_count < buf_size) {
     memcpy(&mem[mem_count], buf + byte_count++, 1);
-
-    if ((mem_count > 0) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0)) {
+    if ((mem_count > 0) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0) && ((mem[3]==' ') || (isdigit(buf[byte_count]) && (memcmp(&mem[0], &buf[byte_count], 3))!=0) || byte_count == buf_size)) {
+    // if ((mem_count > 0) && (memcmp(&mem[mem_count - 1], terminator, 2) == 0)) {
       //Extract the response code which is the first 3 bytes
       char temp[4];
       memcpy(temp, mem, 4);
