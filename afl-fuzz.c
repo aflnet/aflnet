@@ -9043,6 +9043,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "FTP")) {
           extract_requests = &extract_requests_ftp;
           extract_response_codes = &extract_response_codes_ftp;
+        } else if (!strcmp(optarg, "MQTT")) {
+          extract_requests = &extract_requests_mqtt;
+          extract_response_codes = &extract_response_codes_mqtt;
         } else if (!strcmp(optarg, "DTLS12")) {
           extract_requests = &extract_requests_dtls12;
           extract_response_codes = &extract_response_codes_dtls12;
