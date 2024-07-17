@@ -53,5 +53,5 @@ You can use `-e <netns name>` option to specify network namespace to run the ser
 Considering the abovementioned setup:
 
 ```bash
-./afl-fuzz -i ~/paht/to/seed -o ~/path/to/fuzzer/findings -N tcp://10.0.0.2/port -P protocol -e nspce ~/path/to/server args
+./afl-fuzz -i ~/path/to/seed -o ~/path/to/fuzzer/findings -N tcp://10.0.0.2/port -P protocol -e nspce ~/path/to/server args
 ```
