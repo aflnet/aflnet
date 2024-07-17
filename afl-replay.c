@@ -14,7 +14,11 @@ char *get_test_case(char* packet_file, int *fsize)
 {
   /* open packet file */
   s32 fd = open(packet_file, O_RDONLY);
-
+  if(fd == NULL){
+    fprintf(stderr, "[AFLNet-replay] Error opening file %s\n", packet_file); 
+    exit(1);
+  }
+  
   *fsize = lseek(fd, 0, SEEK_END);
   lseek(fd, 0, SEEK_SET);
 

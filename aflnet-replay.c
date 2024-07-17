@@ -35,7 +35,11 @@ int main(int argc, char* argv[])
   }
 
   fp = fopen(argv[1],"rb");
-
+  if(fp == NULL){
+    fprintf(stderr, "[AFLNet-replay] Error opening file %s\n", argv[1]); 
+    exit(1);
+  }
+  
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
   else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
