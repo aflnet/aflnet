@@ -2,7 +2,7 @@
 FROM ubuntu:18.04
 
 RUN apt-get -y update && \
-    apt-get -y install sudo \ 
+    apt-get -y install sudo \
     apt-utils \
     build-essential \
     openssl \
