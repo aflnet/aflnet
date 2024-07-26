@@ -1,0 +1,12 @@
+diff --git a/qemu_mode/qemu-2.10.0/linux-user/syscall.c b/qemu_mode/qemu-2.10.0/linux-user/syscall.c
+index 8c9f71b..01a0c03 100644
+--- qemu-2.10.0/linux-user/syscall.c
++++ qemu-2.10.0/linux-user/syscall.c
+@@ -17,6 +17,7 @@
+  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
+  */
+ #define _ATFILE_SOURCE
++#include <linux/sockios.h>
+ #include "qemu/osdep.h"
+ #include "qemu/cutils.h"
+ #include "qemu/path.h"

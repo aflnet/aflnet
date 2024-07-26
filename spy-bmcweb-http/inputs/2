@@ -1,0 +1,17 @@
+GET /redfish/v1/Managers/bmc HTTP/1.1
+Host: 127.0.0.1:2443
+Connection: keep-alive
+sec-ch-ua: "Chromium";v="124", "Microsoft Edge";v="124", "Not-A.Brand";v="99"
+Accept: application/json
+X-XSRF-TOKEN: Ja1xVBgSTLNaX2p1SZRg
+X-Requested-With: XMLHttpRequest
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0
+sec-ch-ua-platform: "Windows"
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Accept-Encoding: gzip, deflate, br, zstd
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
+Cookie: XSRF-TOKEN=Ja1xVBgSTLNaX2p1SZRg; SESSION=d51j7TKWDKEwggGptxeF
+

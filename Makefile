@@ -33,7 +33,7 @@ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result 
 	      -DBIN_PATH=\"$(BIN_PATH)\"
 
 ifneq "$(filter Linux GNU%,$(shell uname))" ""
-  LDFLAGS  += -ldl -lgvc -lcgraph -lm -lcap
+  LDFLAGS  += -ldl -lgvc -lcgraph -lm -lcap -lssl -lcrypto
 endif
 
 ifeq "$(findstring clang, $(shell $(CC) --version 2>/dev/null))" ""
@@ -61,6 +61,13 @@ test_x86:
 
 endif
 
+.SUFFIXES:
+aflnet.o: aflnet.c aflnet.h
+	$(CC) $(CFLAGS) -c $<
+
+aflnet-ssl.o: aflnet.c aflnet.h
+	$(CC) $(CFLAGS) -c -DAFLNET_SSL $< -o $@
+
 afl-gcc: afl-gcc.c $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	set -e; for i in afl-g++ afl-clang afl-clang++; do ln -sf afl-gcc $$i; done
@@ -69,8 +76,8 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet-ssl.o aflnet.h | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet-ssl.o -o $@ $(LDFLAGS)
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
