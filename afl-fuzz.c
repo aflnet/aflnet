@@ -2176,8 +2176,8 @@ static void cull_queue(void) {
       while (j--)
         if (top_rated[i]->trace_mini[j])
           temp_v[j] &= ~top_rated[i]->trace_mini[j];
-
-      top_rated[i]->favored = 1;
+      if (top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed)
+        top_rated[i]->favored = 1;
       queued_favored++;
 
       //if (!top_rated[i]->was_fuzzed) pending_favored++;
