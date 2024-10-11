@@ -2176,8 +2176,8 @@ static void cull_queue(void) {
       while (j--)
         if (top_rated[i]->trace_mini[j])
           temp_v[j] &= ~top_rated[i]->trace_mini[j];
-      if (top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed)
-        top_rated[i]->favored = 1;
+
+      top_rated[i]->favored = 1;
       queued_favored++;
 
       //if (!top_rated[i]->was_fuzzed) pending_favored++;
@@ -7617,7 +7617,7 @@ abandon_entry:
     queue_cur->was_fuzzed = 1;
     was_fuzzed_map[get_state_index(target_state_id)][queue_cur->index] = 1;
     pending_not_fuzzed--;
-    if (queue_cur->favored) pending_favored--;
+    if (queue_cur->favored && (queue_cur->generating_state_id == target_state_id || queue_cur->is_initial_seed)) pending_favored--;
   }
 
   //munmap(orig_in, queue_cur->len);
