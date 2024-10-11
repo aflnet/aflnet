@@ -7619,6 +7619,8 @@ abandon_entry:
     pending_not_fuzzed--;
     if (queue_cur->favored && (queue_cur->generating_state_id == target_state_id || queue_cur->is_initial_seed))
       pending_favored--;
+    else if (queue_cur->favored && queue_cur->generating_state_id != target_state_id)
+      pending_favored = (pending_favored > 0) ? pending_favored - 1 : pending_favored;
   }
 
   //munmap(orig_in, queue_cur->len);
