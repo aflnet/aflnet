@@ -7617,7 +7617,8 @@ abandon_entry:
     queue_cur->was_fuzzed = 1;
     was_fuzzed_map[get_state_index(target_state_id)][queue_cur->index] = 1;
     pending_not_fuzzed--;
-    if (queue_cur->favored && (queue_cur->generating_state_id == target_state_id || queue_cur->is_initial_seed)) pending_favored--;
+    if (queue_cur->favored && (queue_cur->generating_state_id == target_state_id || queue_cur->is_initial_seed))
+      pending_favored--;
   }
 
   //munmap(orig_in, queue_cur->len);
