@@ -365,6 +365,7 @@ u32 *response_bytes = NULL; //an array keeping accumulated response buffer size
                             //e.g., response_bytes[i] keeps the response buffer size
                             //once messages 0->i have been received and processed by the SUT
 u32 max_annotated_regions = 0;
+u32 prev_target_state_id = -1;
 u32 target_state_id = 0;
 u32 *state_ids = NULL;
 u32 state_ids_count = 0;
@@ -2146,8 +2147,8 @@ static void cull_queue(void) {
   static u8 temp_v[MAP_SIZE >> 3];
   u32 i;
 
-  if (dumb_mode || !score_changed) return;
-
+  if ((dumb_mode || !score_changed) && (prev_target_state_id == target_state_id)) return;
+  prev_target_state_id = target_state_id;
   score_changed = 0;
 
   memset(temp_v, 255, MAP_SIZE >> 3);
