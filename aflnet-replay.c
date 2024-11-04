@@ -35,9 +35,14 @@ int main(int argc, char* argv[])
   }
 
   fp = fopen(argv[1],"rb");
-
+  if(fp == NULL){
+    fprintf(stderr, "[AFLNet-replay] Error opening file %s\n", argv[1]); 
+    exit(1);
+  }
+  
   if (!strcmp(argv[2], "RTSP")) extract_response_codes = &extract_response_codes_rtsp;
   else if (!strcmp(argv[2], "FTP")) extract_response_codes = &extract_response_codes_ftp;
+  else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
   else if (!strcmp(argv[2], "DNS")) extract_response_codes = &extract_response_codes_dns;
   else if (!strcmp(argv[2], "DTLS12")) extract_response_codes = &extract_response_codes_dtls12;
   else if (!strcmp(argv[2], "DICOM")) extract_response_codes = &extract_response_codes_dicom;
@@ -47,7 +52,12 @@ int main(int argc, char* argv[])
   else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
   else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
   else if (!strcmp(argv[2], "IPP")) extract_response_codes = &extract_response_codes_ipp;
-  else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
+  else if (!strcmp(argv[2], "SNMP")) extract_response_codes = &extract_response_codes_SNMP;
+  else if (!strcmp(argv[2], "TFTP")) extract_response_codes = &extract_response_codes_tftp;
+  else if (!strcmp(argv[2], "NTP")) extract_response_codes = &extract_response_codes_NTP;
+  else if (!strcmp(argv[2], "DHCP")) extract_response_codes = &extract_response_codes_dhcp;
+  else if (!strcmp(argv[2], "SNTP")) extract_response_codes = &extract_response_codes_SNTP;  
+else {fprintf(stderr, "[AFLNet-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
 
   portno = atoi(argv[3]);
 
@@ -68,7 +78,7 @@ int main(int argc, char* argv[])
   }
 
   int sockfd;
-  if ((!strcmp(argv[2], "DTLS12")) || (!strcmp(argv[2], "SIP"))) {
+  if ((!strcmp(argv[2], "DTLS12")) || (!strcmp(argv[2], "DNS")) || (!strcmp(argv[2], "SIP"))) {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   } else {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
