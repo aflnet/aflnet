@@ -1742,16 +1742,41 @@ unsigned int* extract_response_codes_dicom(unsigned char* buf, unsigned int buf_
 
   unsigned int *state_sequence = NULL;
   unsigned int state_count = 0;
+  unsigned int byte_count = 0;
+  unsigned int pdu_length = 0;
+  unsigned int packet_length = 0;
 
   state_count++;
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0; // initial status code is 0
 
-  state_count++;
-  unsigned int message_code = buf[0]; // return PDU type as status code
-  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-  state_sequence[state_count - 1] = message_code;
 
+   while(byte_count < buf_size)
+  {
+    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break;
+    pdu_length =
+    (buf[byte_count + 5]) |
+    (buf[byte_count + 4] << 8)  |
+    (buf[byte_count + 3] << 16) |
+    (buf[byte_count + 2] << 24);
+
+    packet_length = pdu_length + 6;
+
+    state_count++;
+    unsigned int message_code = buf[byte_count]; // return PDU type as status code
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = message_code;
+    if ( (byte_count + packet_length) < byte_count ) break; // checking int overflow
+    if ( (byte_count + packet_length) < packet_length ) break; // checking int overflow
+    byte_count += packet_length;
+  }
+
+  if ((byte_count < buf_size) && (buf_size > 0)) {
+    state_count++;
+    unsigned int message_code = buf[byte_count]; // return PDU type as status code
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = message_code;
+  }
   *state_count_ref = state_count;
   return state_sequence;
 };
