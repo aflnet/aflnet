@@ -328,6 +328,12 @@
 #define MAP_SIZE_POW2       16
 #define MAP_SIZE            (1 << MAP_SIZE_POW2)
 
+/* Half for storing code coverage, and half for storing state coverage */
+#define SHIFT_SIZE          (1 << (MAP_SIZE_POW2 - 1))
+
+#define STATE_SIZE_POW2     8
+#define STATE_SIZE          (1 << STATE_SIZE_POW2)
+
 #define STATE_STR_LEN 12
 
 /* Maximum allocator request size (keep well under INT_MAX): */
