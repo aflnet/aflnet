@@ -11,6 +11,37 @@
 #include "alloc-inl.h"
 #include "aflnet.h"
 
+// Mapping from original state IDs to compact IDs starting from 1
+
+static u32 message_code_counter = 0;
+khash_t(32) *message_code_map = NULL;
+
+void init_message_code_map(){
+  message_code_map = kh_init(32);
+}
+
+void destroy_message_code_map(){
+  kh_destroy(32, message_code_map);
+}
+
+u32 get_mapped_message_code (u32 ori_message_code){
+  u32 mapped_message_code = 0;
+  khiter_t k = kh_get(32, message_code_map, ori_message_code);
+  if (k == kh_end(message_code_map)) {
+    int ret;
+    k = kh_put(32, message_code_map, ori_message_code, &ret);
+    message_code_counter++;
+    kh_value(message_code_map, k) = message_code_counter;
+
+    mapped_message_code = message_code_counter;
+  }
+  else {
+    mapped_message_code = kh_value(message_code_map, k);
+  }
+
+  return mapped_message_code;
+}
+
 // Protocol-specific functions for extracting requests and responses
 
 region_t* extract_requests_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
@@ -1264,6 +1295,8 @@ unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_s
 
       if (message_code == 0) break;
 
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1274,6 +1307,9 @@ unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_s
       temp[4] = 0x0;
       unsigned int message_code = (unsigned int) atoi(temp);
       if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1325,6 +1361,8 @@ unsigned int* extract_response_codes_dhcp(unsigned char* buf, unsigned int buf_s
 
       if (message_code == 0) break;
 
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1335,6 +1373,9 @@ unsigned int* extract_response_codes_dhcp(unsigned char* buf, unsigned int buf_s
       temp[4] = 0x0;
       unsigned int message_code = (unsigned int) atoi(temp);
       if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1390,6 +1431,8 @@ unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_s
 
       } 
 
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1402,6 +1445,9 @@ unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_s
       if (message_code == 0) {
         break;
       }
+
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1454,7 +1500,9 @@ unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_si
       {
         break;
 
-      } 
+      }
+      
+      message_code = get_mapped_message_code(message_code);
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -1468,6 +1516,9 @@ unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_si
       if (message_code == 0) {
         break;
       }
+
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1528,6 +1579,8 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
 
       } 
 
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1540,6 +1593,9 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
       if (message_code == 0) {
         break;
       }
+
+      message_code = get_mapped_message_code(message_code);
+
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1585,6 +1641,8 @@ unsigned int* extract_response_codes_smtp(unsigned char* buf, unsigned int buf_s
       unsigned int message_code = (unsigned int) atoi(temp);
 
       if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -1643,16 +1701,21 @@ unsigned int* extract_response_codes_ssh(unsigned char* buf, unsigned int buf_si
         if (message_size - 2 > buf_size - byte_count) break;
 
         unsigned char message_code = (unsigned char)mem[5];
-        state_count++;
-        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-        if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
-        state_sequence[state_count - 1] = message_code;
+        
         /* If this is a KEY exchange related message */
         if ((message_code >= 20) && (message_code <= 49)) {
           //Do nothing
         } else {
           message_size += 8;
         }
+
+        message_code = get_mapped_message_code(message_code);
+
+        state_count++;
+        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+        if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
+        state_sequence[state_count - 1] = message_code;
+
         byte_count += message_size - 2;
       }
    }
@@ -1713,6 +1776,7 @@ unsigned int* extract_response_codes_tls(unsigned char* buf, unsigned int buf_si
 
       //add a new response code
       unsigned int message_code = (content_type << 8) + message_type;
+      message_code = get_mapped_message_code(message_code);
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = message_code;
@@ -1749,6 +1813,7 @@ unsigned int* extract_response_codes_dicom(unsigned char* buf, unsigned int buf_
 
   state_count++;
   unsigned int message_code = buf[0]; // return PDU type as status code
+  message_code = get_mapped_message_code(message_code);
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = message_code;
 
@@ -1781,6 +1846,7 @@ unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_si
 
       // Save the 3rd & 4th bytes as the response code
       unsigned int message_code = (unsigned int) ((mem[2] << 8) + mem[3]);
+      message_code = get_mapped_message_code(message_code);
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -1978,6 +2044,8 @@ unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf
       }
 
       status_code = (content_type << 8) + message_type;
+
+      status_code = get_mapped_message_code(status_code);
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
       state_sequence[state_count - 1] = status_code;
@@ -2022,6 +2090,8 @@ unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_s
         unsigned int message_code = (unsigned int) atoi(temp);
 
         if (message_code == 0) break;
+
+        message_code = get_mapped_message_code(message_code);
 
         state_count++;
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -2071,6 +2141,8 @@ unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_si
       unsigned int message_code = (unsigned int) atoi(temp);
 
       if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -2128,6 +2200,9 @@ unsigned int* extract_response_codes_mqtt(unsigned char* buf, unsigned int buf_s
       unsigned char message_code = (unsigned char)mem[0];
       // printf("[fuzz]message_code is %02x\n",message_code);
 			if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
+
       // Create a new state 
 			state_count++;
 			state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -2183,6 +2258,8 @@ unsigned int* extract_response_codes_sip(unsigned char* buf, unsigned int buf_si
 
         if (message_code == 0) break;
 
+        message_code = get_mapped_message_code(message_code);
+
         state_count++;
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
         state_sequence[state_count - 1] = message_code;
@@ -2234,6 +2311,8 @@ unsigned int* extract_response_codes_http(unsigned char* buf, unsigned int buf_s
         unsigned int message_code = (unsigned int) atoi(temp);
 
         if (message_code == 0) break;
+
+        message_code = get_mapped_message_code(message_code);
 
         state_count++;
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -2297,6 +2376,8 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
           //200 + IPP code to not confuse initial 0 state with successful-ok 0 state
           message_code += (unsigned int) (10 * third + fourth);
         }
+
+        message_code = get_mapped_message_code(message_code);
 
         state_count++;
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
