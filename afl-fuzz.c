@@ -379,6 +379,8 @@ u32 fuzzed_map_states = 0;
 u32 fuzzed_map_qentries = 0;
 u32 max_seed_region_count = 0;
 u32 local_port;		/* TCP/UDP port number to use as source */
+u32 *state_sequence = NULL; /* State sequence received from the server */
+u32 state_count = 0; /* Number of states in the state sequence */ 
 
 /* flags */
 u8 use_net = 0;
@@ -391,6 +393,7 @@ u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
 u8 state_selection_algo = ROUND_ROBIN, seed_selection_algo = RANDOM_SELECTION;
+u8 feedback_type = CODE_FEEDBACK;
 u8 false_negative_reduction = 0;
 
 /* Implemented state machine */
@@ -467,28 +470,26 @@ void expand_was_fuzzed_map(u32 new_states, u32 new_qentries) {
   fuzzed_map_qentries += new_qentries;
 }
 
-/* Get unique state count, given a state sequence */
-u32 get_unique_state_count(unsigned int *state_sequence, unsigned int state_count) {
-  //A hash set is used so that no state is counted twice
-  khash_t(hs32) *khs_state_ids;
-  khs_state_ids = kh_init(hs32);
+/* Store state coverage feedback into the right of the bitmap */
+void update_state_bitmap(){
 
-  unsigned int discard, state_id, i;
-  u32 result = 0;
+  if (state_sequence) {
+    ck_free(state_sequence);
+    state_sequence = NULL;
+  }
+  state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
 
-  for (i = 0; i < state_count; i++) {
-    state_id = state_sequence[i];
+  u32 prev_state = 0;
 
-    if (kh_get(hs32, khs_state_ids, state_id) != kh_end(khs_state_ids)) {
-      continue;
-    } else {
-      kh_put(hs32, khs_state_ids, state_id, &discard);
-      result++;
-    }
+  for (u32 i = 0; i < state_count; i++) {
+    u32 cur_state = state_sequence[i];
+
+    u16 map_ptr_idx = (prev_state * STATE_SIZE  + cur_state) % SHIFT_SIZE;
+    trace_bits[map_ptr_idx]++;
+
+    prev_state = cur_state;
   }
 
-  kh_destroy(hs32, khs_state_ids);
-  return result;
 }
 
 /* Check if a state sequence is interesting (e.g., new state is discovered). Loop is taken into account */
@@ -526,9 +527,9 @@ void update_region_annotations(struct queue_entry* q)
       q->regions[i].state_sequence = NULL;
       q->regions[i].state_count = 0;
     } else {
-      unsigned int state_count;
-      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_bytes[i], &state_count);
-      q->regions[i].state_count = state_count;
+      unsigned int cur_state_count;
+      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_bytes[i], &cur_state_count);
+      q->regions[i].state_count = cur_state_count;
     }
   }
 }
@@ -567,8 +568,7 @@ u8* choose_source_region(u32 *out_len) {
 
 /* Update #fuzzs visiting a specific state */
 void update_fuzzs() {
-  unsigned int state_count, i, discard;
-  unsigned int *state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
+  unsigned int i, discard;
 
   //A hash set is used so that the #paths is not updated more than once for one specific state
   khash_t(hs32) *khs_state_ids;
@@ -588,7 +588,7 @@ void update_fuzzs() {
       }
     }
   }
-  ck_free(state_sequence);
+
   kh_destroy(hs32, khs_state_ids);
 }
 
@@ -763,13 +763,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
   khint_t k;
   int discard, i;
   state_info_t *state;
-  unsigned int state_count;
 
   if (!response_buf_size || !response_bytes) return;
-
-  unsigned int *state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
-
-  q->unique_state_count = get_unique_state_count(state_sequence, state_count);
 
   if (is_state_sequence_interesting(state_sequence, state_count)) {
     //Save the current kl_messages to a file which can be used to replay the newly discovered paths on the ipsm
@@ -979,8 +974,6 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
     }
   }
 
-  //Free state sequence
-  if (state_sequence) ck_free(state_sequence);
 }
 
 /* Send (mutated) messages in order to the server under test */
@@ -1588,7 +1581,6 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->index        = queued_paths;
   q->generating_state_id = target_state_id;
   q->is_initial_seed = 0;
-  q->unique_state_count = 0;
 
   if (q->depth > max_depth) max_depth = q->depth;
 
@@ -2099,13 +2091,9 @@ static void update_bitmap_score(struct queue_entry* q) {
 
        if (top_rated[i]) {
 
-         /* AFLNet check unique state count first */
-
-         if (q->unique_state_count < top_rated[i]->unique_state_count) continue;
-
          /* Faster-executing or smaller test cases are favored. */
 
-         if ((q->unique_state_count < top_rated[i]->unique_state_count) && (fav_factor > top_rated[i]->exec_us * top_rated[i]->len)) continue;
+         if (fav_factor > top_rated[i]->exec_us * top_rated[i]->len) continue;
 
          /* Looks like we're going to win. Decrease ref count for the
             previous winner, discard its trace_bits[] if necessary. */
@@ -2220,7 +2208,7 @@ EXP_ST void setup_shm(void) {
      fork server commands. This should be replaced with better auto-detection
      later on, perhaps? */
 
-  if (!dumb_mode) setenv(SHM_ENV_VAR, shm_str, 1);
+  if (!dumb_mode && feedback_type != STATE_FEEDBACK) setenv(SHM_ENV_VAR, shm_str, 1);
 
   ck_free(shm_str);
 
@@ -3320,6 +3308,7 @@ static u8 run_target(char** argv, u32 timeout) {
      compiler below this point. Past this location, trace_bits[] behave
      very normally and do not have to be treated as volatile. */
 
+  if (feedback_type == STATE_FEEDBACK || feedback_type == CODE_STATE_FEEDBACK) update_state_bitmap();
   MEM_BARRIER();
 
   tb4 = *(u32*)trace_bits;
@@ -4357,13 +4346,17 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps) {
 
 static void maybe_update_plot_file(double bitmap_cvg, double eps) {
 
-  static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md;
+  static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md, prev_nodes, prev_edges;
   static u64 prev_qc, prev_uc, prev_uh;
+
+  u32 cur_nodes = agnnodes(ipsm);
+  u32 cur_edges = agnedges(ipsm);
 
   if (prev_qp == queued_paths && prev_pf == pending_favored &&
       prev_pnf == pending_not_fuzzed && prev_ce == current_entry &&
       prev_qc == queue_cycle && prev_uc == unique_crashes &&
-      prev_uh == unique_hangs && prev_md == max_depth) return;
+      prev_uh == unique_hangs && prev_md == max_depth &&
+      prev_nodes == cur_nodes && prev_edges == cur_edges) return;
 
   prev_qp  = queued_paths;
   prev_pf  = pending_favored;
@@ -4373,6 +4366,8 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
   prev_uc  = unique_crashes;
   prev_uh  = unique_hangs;
   prev_md  = max_depth;
+  prev_nodes = cur_nodes;
+  prev_edges = cur_edges;
 
   /* Fields in the file:
 
@@ -4381,10 +4376,10 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
      execs_per_sec */
 
   fprintf(plot_file,
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f\n",
+          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
-          unique_hangs, max_depth, eps); /* ignore errors */
+          unique_hangs, max_depth, eps, prev_nodes, prev_edges); /* ignore errors */
 
   fflush(plot_file);
 
@@ -8259,7 +8254,7 @@ EXP_ST void setup_dirs_fds(void) {
 
   fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
-                     "unique_hangs, max_depth, execs_per_sec\n");
+                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges\n");
                      /* ignore errors */
 
 }
@@ -8832,7 +8827,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:b:")) > 0)
 
     switch (opt) {
 
@@ -9113,6 +9108,10 @@ int main(int argc, char** argv) {
       case 's': /* seed selection option */
         if (sscanf(optarg, "%hhu", &seed_selection_algo) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -s");
         break;
+      
+      case 'b': /* feedback type */
+        if (sscanf(optarg, "%hhu", &feedback_type) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -b");
+        break;
 
       case 'R':
         if (region_level_mutation) FATAL("Multiple -R options not supported");
@@ -9158,6 +9157,9 @@ int main(int argc, char** argv) {
             "without CAP_SYS_ADMIN capability.\n You can set it by invoking "
             "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".", netns_name);
   }
+
+  if (feedback_type > 1 && !state_aware_mode) 
+    FATAL("Feedback type %d is only supported in state-aware mode", feedback_type);
 
   setup_signal_handlers();
   check_asan_opts();
@@ -9216,6 +9218,8 @@ int main(int argc, char** argv) {
   init_count_class16();
 
   setup_ipsm();
+
+  init_message_code_map();
 
   setup_dirs_fds();
   read_testcases();
@@ -9421,6 +9425,7 @@ stop_fuzzing:
   ck_free(sync_id);
 
   destroy_ipsm();
+  destroy_message_code_map();
 
   alloc_report();
 
