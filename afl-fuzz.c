@@ -479,6 +479,8 @@ void update_state_bitmap(){
   }
   state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
 
+  if(feedback_type != STATE_FEEDBACK && feedback_type != CODE_STATE_FEEDBACK) return;
+
   u32 prev_state = 0;
 
   for (u32 i = 0; i < state_count; i++) {
@@ -3308,7 +3310,7 @@ static u8 run_target(char** argv, u32 timeout) {
      compiler below this point. Past this location, trace_bits[] behave
      very normally and do not have to be treated as volatile. */
 
-  if (feedback_type == STATE_FEEDBACK || feedback_type == CODE_STATE_FEEDBACK) update_state_bitmap();
+  update_state_bitmap();
   MEM_BARRIER();
 
   tb4 = *(u32*)trace_bits;
