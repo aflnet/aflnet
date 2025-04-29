@@ -46,9 +46,16 @@ enum {
 
 enum {
   /* 00 */ INVALID_FEEDBACK,
-  /* 01 */ CODE_FEEDBACK,
-  /* 02 */ STATE_FEEDBACK,
-  /* 03 */ CODE_STATE_FEEDBACK,
+  /* 01 */ CODE_FEEDBACK,       // select interesting seeds based on code feedback
+  /* 02 */ STATE_FEEDBACK,      // select interesting seeds based on state feedback
+  /* 03 */ CODE_STATE_FEEDBACK, // select interesting seeds based on both feedback
+};
+
+enum {
+  /* 00 */ INVALID_SCHEDULE,
+  /* 01 */ QUEUE_SCHEDULE,   // choose next seeds based on seed queue
+  /* 02 */ IPSM_SCHEDULE,    // choose next seeds based on state machine
+  /* 03 */ HYBRID_SCHEDULE,  // choose next seeds based on state machine only when the fuzzer is stuck
 };
 
 // Initialize klist linked list data structure
