@@ -44,6 +44,20 @@ enum {
   /* 03 */ FAVOR
 };
 
+enum {
+  /* 00 */ INVALID_FEEDBACK,
+  /* 01 */ CODE_FEEDBACK,       // select interesting seeds based on code feedback
+  /* 02 */ STATE_FEEDBACK,      // select interesting seeds based on state feedback
+  /* 03 */ CODE_STATE_FEEDBACK, // select interesting seeds based on both feedback
+};
+
+enum {
+  /* 00 */ INVALID_SCHEDULE,
+  /* 01 */ QUEUE_SCHEDULE,   // choose next seeds based on seed queue
+  /* 02 */ IPSM_SCHEDULE,    // choose next seeds based on state machine
+  /* 03 */ HYBRID_SCHEDULE,  // choose next seeds based on state machine only when the fuzzer is stuck
+};
+
 // Initialize klist linked list data structure
 #define message_t_freer(x)
 KLIST_INIT(lms, message_t *, message_t_freer)
@@ -52,6 +66,9 @@ KHASH_SET_INIT_INT(hs32)
 
 // Initialize a hash table with int key and value is of type state_info_t
 KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equal)
+
+// Initialize a map with int key and u32 value
+KHASH_MAP_INIT_INT(32, u32)
 
 // Functions for extracting requests and responses
 
@@ -141,5 +158,9 @@ void hexdump(unsigned char *msg, unsigned char * buf, int start, int end);
 
 /* Reads a number of bytes from buf from offset into an unsigned int and returns it. May overflow*/
 u32 read_bytes_to_uint32(unsigned char* buf, unsigned int offset, int num_bytes);
+
+/* Mapping from original message code IDs to compact IDs starting from 1 */
+void init_message_code_map();
+void destroy_message_code_map();
 
 #endif /* __AFLNET_H */

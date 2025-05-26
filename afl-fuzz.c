@@ -379,6 +379,8 @@ u32 fuzzed_map_states = 0;
 u32 fuzzed_map_qentries = 0;
 u32 max_seed_region_count = 0;
 u32 local_port;		/* TCP/UDP port number to use as source */
+u32 *state_sequence = NULL; /* State sequence received from the server */
+u32 state_count = 0; /* Number of states in the state sequence */ 
 
 /* flags */
 u8 use_net = 0;
@@ -391,6 +393,9 @@ u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
 u8 state_selection_algo = ROUND_ROBIN, seed_selection_algo = RANDOM_SELECTION;
+u8 feedback_type = CODE_FEEDBACK;   /* Select interesting seeds based on code feedback */
+u8 seed_schedule_type = IPSM_SCHEDULE; /* Choose next seeds based on state machine */
+u8 code_aware_schedule = 0;
 u8 false_negative_reduction = 0;
 
 /* Implemented state machine */
@@ -467,28 +472,28 @@ void expand_was_fuzzed_map(u32 new_states, u32 new_qentries) {
   fuzzed_map_qentries += new_qentries;
 }
 
-/* Get unique state count, given a state sequence */
-u32 get_unique_state_count(unsigned int *state_sequence, unsigned int state_count) {
-  //A hash set is used so that no state is counted twice
-  khash_t(hs32) *khs_state_ids;
-  khs_state_ids = kh_init(hs32);
+/* Store state coverage feedback into the right of the bitmap */
+void update_state_bitmap(){
 
-  unsigned int discard, state_id, i;
-  u32 result = 0;
+  if (state_sequence) {
+    ck_free(state_sequence);
+    state_sequence = NULL;
+  }
+  state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
 
-  for (i = 0; i < state_count; i++) {
-    state_id = state_sequence[i];
+  if(feedback_type != STATE_FEEDBACK && feedback_type != CODE_STATE_FEEDBACK) return;
 
-    if (kh_get(hs32, khs_state_ids, state_id) != kh_end(khs_state_ids)) {
-      continue;
-    } else {
-      kh_put(hs32, khs_state_ids, state_id, &discard);
-      result++;
-    }
+  u32 prev_state = 0;
+
+  for (u32 i = 0; i < state_count; i++) {
+    u32 cur_state = state_sequence[i];
+
+    u16 map_ptr_idx = (prev_state * STATE_SIZE  + cur_state) % SHIFT_SIZE;
+    trace_bits[map_ptr_idx]++;
+
+    prev_state = cur_state;
   }
 
-  kh_destroy(hs32, khs_state_ids);
-  return result;
 }
 
 /* Check if a state sequence is interesting (e.g., new state is discovered). Loop is taken into account */
@@ -526,9 +531,9 @@ void update_region_annotations(struct queue_entry* q)
       q->regions[i].state_sequence = NULL;
       q->regions[i].state_count = 0;
     } else {
-      unsigned int state_count;
-      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_bytes[i], &state_count);
-      q->regions[i].state_count = state_count;
+      unsigned int cur_state_count;
+      q->regions[i].state_sequence = (*extract_response_codes)(response_buf, response_bytes[i], &cur_state_count);
+      q->regions[i].state_count = cur_state_count;
     }
   }
 }
@@ -567,8 +572,7 @@ u8* choose_source_region(u32 *out_len) {
 
 /* Update #fuzzs visiting a specific state */
 void update_fuzzs() {
-  unsigned int state_count, i, discard;
-  unsigned int *state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
+  unsigned int i, discard;
 
   //A hash set is used so that the #paths is not updated more than once for one specific state
   khash_t(hs32) *khs_state_ids;
@@ -588,7 +592,7 @@ void update_fuzzs() {
       }
     }
   }
-  ck_free(state_sequence);
+
   kh_destroy(hs32, khs_state_ids);
 }
 
@@ -763,13 +767,8 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
   khint_t k;
   int discard, i;
   state_info_t *state;
-  unsigned int state_count;
 
   if (!response_buf_size || !response_bytes) return;
-
-  unsigned int *state_sequence = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
-
-  q->unique_state_count = get_unique_state_count(state_sequence, state_count);
 
   if (is_state_sequence_interesting(state_sequence, state_count)) {
     //Save the current kl_messages to a file which can be used to replay the newly discovered paths on the ipsm
@@ -979,8 +978,6 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
     }
   }
 
-  //Free state sequence
-  if (state_sequence) ck_free(state_sequence);
 }
 
 /* Send (mutated) messages in order to the server under test */
@@ -1588,7 +1585,6 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->index        = queued_paths;
   q->generating_state_id = target_state_id;
   q->is_initial_seed = 0;
-  q->unique_state_count = 0;
 
   if (q->depth > max_depth) max_depth = q->depth;
 
@@ -2099,13 +2095,9 @@ static void update_bitmap_score(struct queue_entry* q) {
 
        if (top_rated[i]) {
 
-         /* AFLNet check unique state count first */
-
-         if (q->unique_state_count < top_rated[i]->unique_state_count) continue;
-
          /* Faster-executing or smaller test cases are favored. */
 
-         if ((q->unique_state_count < top_rated[i]->unique_state_count) && (fav_factor > top_rated[i]->exec_us * top_rated[i]->len)) continue;
+         if (fav_factor > top_rated[i]->exec_us * top_rated[i]->len) continue;
 
          /* Looks like we're going to win. Decrease ref count for the
             previous winner, discard its trace_bits[] if necessary. */
@@ -2182,7 +2174,12 @@ static void cull_queue(void) {
 
       //if (!top_rated[i]->was_fuzzed) pending_favored++;
       /* AFLNet takes into account more information to make this decision */
-      if ((top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed) && (was_fuzzed_map[get_state_index(target_state_id)][top_rated[i]->index] == 0)) pending_favored++;
+      if (state_aware_mode && !code_aware_schedule){
+        if ((top_rated[i]->generating_state_id == target_state_id || top_rated[i]->is_initial_seed) && (was_fuzzed_map[get_state_index(target_state_id)][top_rated[i]->index] == 0)) pending_favored++;
+      }
+      else{
+        if (!top_rated[i]->was_fuzzed) pending_favored++;
+      }
 
     }
 
@@ -2220,7 +2217,7 @@ EXP_ST void setup_shm(void) {
      fork server commands. This should be replaced with better auto-detection
      later on, perhaps? */
 
-  if (!dumb_mode) setenv(SHM_ENV_VAR, shm_str, 1);
+  if (!dumb_mode && feedback_type != STATE_FEEDBACK) setenv(SHM_ENV_VAR, shm_str, 1);
 
   ck_free(shm_str);
 
@@ -3320,6 +3317,7 @@ static u8 run_target(char** argv, u32 timeout) {
      compiler below this point. Past this location, trace_bits[] behave
      very normally and do not have to be treated as volatile. */
 
+  update_state_bitmap();
   MEM_BARRIER();
 
   tb4 = *(u32*)trace_bits;
@@ -4357,13 +4355,17 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps) {
 
 static void maybe_update_plot_file(double bitmap_cvg, double eps) {
 
-  static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md;
+  static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md, prev_nodes, prev_edges;
   static u64 prev_qc, prev_uc, prev_uh;
+
+  u32 cur_nodes = agnnodes(ipsm);
+  u32 cur_edges = agnedges(ipsm);
 
   if (prev_qp == queued_paths && prev_pf == pending_favored &&
       prev_pnf == pending_not_fuzzed && prev_ce == current_entry &&
       prev_qc == queue_cycle && prev_uc == unique_crashes &&
-      prev_uh == unique_hangs && prev_md == max_depth) return;
+      prev_uh == unique_hangs && prev_md == max_depth &&
+      prev_nodes == cur_nodes && prev_edges == cur_edges) return;
 
   prev_qp  = queued_paths;
   prev_pf  = pending_favored;
@@ -4373,6 +4375,8 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
   prev_uc  = unique_crashes;
   prev_uh  = unique_hangs;
   prev_md  = max_depth;
+  prev_nodes = cur_nodes;
+  prev_edges = cur_edges;
 
   /* Fields in the file:
 
@@ -4381,10 +4385,10 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
      execs_per_sec */
 
   fprintf(plot_file,
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f\n",
+          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
-          unique_hangs, max_depth, eps); /* ignore errors */
+          unique_hangs, max_depth, eps, prev_nodes, prev_edges); /* ignore errors */
 
   fflush(plot_file);
 
@@ -5847,7 +5851,7 @@ static u8 fuzz_one(char** argv) {
 
   //Skip some steps if in state_aware_mode because in this mode
   //the seed is selected based on state-aware algorithms
-  if (state_aware_mode) goto AFLNET_REGIONS_SELECTION;
+  if (state_aware_mode && !code_aware_schedule) goto AFLNET_REGIONS_SELECTION;
 
   if (pending_favored) {
 
@@ -5896,7 +5900,7 @@ AFLNET_REGIONS_SELECTION:;
   and M2_region_count which is the total number of regions in M2. How the information is identified is
   state aware dependent. However, once the information is clear, the code for fuzzing preparation is the same */
 
-  if (state_aware_mode) {
+  if (state_aware_mode && !code_aware_schedule) {
     /* In state aware mode, select M2 based on the targeted state ID */
     u32 total_region = queue_cur->region_count;
     if (total_region == 0) PFATAL("0 region found for %s", queue_cur->fname);
@@ -8107,7 +8111,9 @@ static void usage(u8* argv0) {
        "  -F            - enable false negative reduction mode (see README.md)\n"
        "  -c cleanup    - name or full path to the server cleanup script (see README.md)\n"
        "  -q algo       - state selection algorithm (See aflnet.h for all available options)\n"
-       "  -s algo       - seed selection algorithm (See aflnet.h for all available options)\n\n"
+       "  -s algo       - seed selection algorithm (See aflnet.h for all available options)\n"
+       "  -b algo       - feedback type (See aflnet.h for all available options)\n"
+       "  -h algo       - seed schedule type (See aflnet.h for all available options)\n\n"
 
        "Other stuff:\n\n"
 
@@ -8259,7 +8265,7 @@ EXP_ST void setup_dirs_fds(void) {
 
   fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
-                     "unique_hangs, max_depth, execs_per_sec\n");
+                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges\n");
                      /* ignore errors */
 
 }
@@ -8832,7 +8838,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:b:h:")) > 0)
 
     switch (opt) {
 
@@ -9113,6 +9119,14 @@ int main(int argc, char** argv) {
       case 's': /* seed selection option */
         if (sscanf(optarg, "%hhu", &seed_selection_algo) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -s");
         break;
+      
+      case 'b': /* feedback type */
+        if (sscanf(optarg, "%hhu", &feedback_type) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -b");
+        break;
+      
+      case 'h':
+        if (sscanf(optarg, "%hhu", &seed_schedule_type) < 1 || optarg[0] == '-') FATAL("Bad syntax used for -b");
+        break;
 
       case 'R':
         if (region_level_mutation) FATAL("Multiple -R options not supported");
@@ -9158,6 +9172,12 @@ int main(int argc, char** argv) {
             "without CAP_SYS_ADMIN capability.\n You can set it by invoking "
             "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".", netns_name);
   }
+
+  if (feedback_type > 1 && !state_aware_mode) 
+    FATAL("Feedback type %d is only supported in state-aware mode", feedback_type);
+  
+  if (seed_schedule_type > 1 && !state_aware_mode) 
+    FATAL("Seed schedule %d is only supported in state-aware mode", seed_schedule_type);
 
   setup_signal_handlers();
   check_asan_opts();
@@ -9217,6 +9237,8 @@ int main(int argc, char** argv) {
 
   setup_ipsm();
 
+  init_message_code_map();
+
   setup_dirs_fds();
   read_testcases();
   load_auto();
@@ -9261,8 +9283,126 @@ int main(int argc, char** argv) {
     if (stop_soon) goto stop_fuzzing;
   }
 
-  if (state_aware_mode) {
+  if (seed_schedule_type == HYBRID_SCHEDULE) {
 
+    if (state_ids_count == 0) {
+      PFATAL("No server states have been detected. Server responses are likely empty!");
+    }
+
+    char* time_gap_str = getenv("TIME_GAP");
+    u32 time_gap = 600;
+
+    if (time_gap_str) {
+
+      if (sscanf(time_gap_str, "%u", &time_gap) != 1)
+        PFATAL("Setting time_gap failed!");
+    }
+
+    last_path_time = get_cur_time();
+
+    while (1) {
+      u8 skipped_fuzz;
+
+      /* Failed to find a new paths in the past 1 mins */
+      if (UR(100) < (get_cur_time() - last_path_time) / time_gap) {
+        code_aware_schedule = 0;
+        struct queue_entry *selected_seed = NULL;
+        while(!selected_seed || selected_seed->region_count == 0) {
+          /* choose a state */
+          target_state_id = choose_target_state(state_selection_algo);
+
+          /* Update favorites based on the selected state */
+          cull_queue();
+
+          /* Update number of times a state has been selected for targeted fuzzing */
+          khint_t k = kh_get(hms, khms_states, target_state_id);
+          if (k != kh_end(khms_states)) {
+            kh_val(khms_states, k)->selected_times++;
+          }
+
+          selected_seed = choose_seed(target_state_id, seed_selection_algo);
+        }
+
+        /* Seek to the selected seed */
+        if (selected_seed) {
+          if (!queue_cur) {
+              current_entry     = 0;
+              cur_skipped_paths = 0;
+              queue_cur         = queue;
+              queue_cycle++;
+          }
+          while (queue_cur != selected_seed) {
+            queue_cur = queue_cur->next;
+            current_entry++;
+            if (!queue_cur) {
+              current_entry     = 0;
+              cur_skipped_paths = 0;
+              queue_cur         = queue;
+              queue_cycle++;
+            }
+          }
+        }
+      }
+      else{
+        code_aware_schedule = 1;
+
+        cull_queue();
+
+        if (!queue_cur) {
+
+          queue_cycle++;
+          current_entry     = 0;
+          cur_skipped_paths = 0;
+          queue_cur         = queue;
+
+          while (seek_to) {
+            current_entry++;
+            seek_to--;
+            queue_cur = queue_cur->next;
+          }
+
+          show_stats();
+
+          if (not_on_tty) {
+            ACTF("Entering queue cycle %llu.", queue_cycle);
+            fflush(stdout);
+          }
+
+          /* If we had a full queue cycle with no new finds, try
+            recombination strategies next. */
+
+          if (queued_paths == prev_queued) {
+
+            if (use_splicing) cycles_wo_finds++; else use_splicing = 1;
+
+          } else cycles_wo_finds = 0;
+
+          prev_queued = queued_paths;
+
+        }
+      }
+
+      skipped_fuzz = fuzz_one(use_argv);
+
+      if (!stop_soon && sync_id && !skipped_fuzz) {
+
+        if (!(sync_interval_cnt++ % SYNC_INTERVAL))
+          sync_fuzzers(use_argv);
+
+      }
+
+      if (!stop_soon && exit_1) stop_soon = 2;
+
+      if (stop_soon) break;
+
+      if (code_aware_schedule){
+        queue_cur = queue_cur->next;
+        current_entry++;
+      }
+    }
+
+  } else if (seed_schedule_type == IPSM_SCHEDULE){
+    code_aware_schedule = 0;
     if (state_ids_count == 0) {
       PFATAL("No server states have been detected. Server responses are likely empty!");
     }
@@ -9319,10 +9459,9 @@ int main(int argc, char** argv) {
 
       if (stop_soon) break;
     }
-
-  } else {
+  }
+  else {
     while (1) {
-
       u8 skipped_fuzz;
 
       cull_queue();
@@ -9421,6 +9560,7 @@ stop_fuzzing:
   ck_free(sync_id);
 
   destroy_ipsm();
+  destroy_message_code_map();
 
   alloc_report();
 
