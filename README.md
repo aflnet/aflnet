@@ -20,13 +20,30 @@ booktitle={Proceedings of the 13rd IEEE International Conference on Software Tes
 year={2020},}
 ```
 
-# Installation (Tested on Ubuntu 18.04 & 16.04 64-bit)
+# Installation (Tested on Kali 2022.4, Ubuntu 18.04, & 16.04 64-bit)
 
 ## Prerequisites
 
 ```bash
 # Install clang (as required by AFL/AFLNet to enable llvm_mode)
+# Requires clang && llvm-config _VERSION 12_
 sudo apt-get install clang
+clang --version
+clang++ --version
+llvm-config --version
+# If any of the commands report a version greater than 12, it won't work.
+# On Kali / Debian / Ubuntu you can run the following to link to version 12:
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-12 0
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-12 0
+update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-12 0
+clang --version
+clang++ --version
+llvm-config --version
+# Every version should report back version 12.x if not, use update-alternatives to select:
+update-alternatives --config clang
+update-alternatives --config clang++
+update-alternatives --config llvm-config
+
 # Install graphviz development
 sudo apt-get install graphviz-dev libcap-dev
 ```
