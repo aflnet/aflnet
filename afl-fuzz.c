@@ -92,6 +92,7 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
+
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
 
@@ -350,6 +351,9 @@ char** use_argv;  /* argument to run the target program. In vanilla AFL, this is
 static u8 run_target(char** argv, u32 timeout);
 static inline u32 UR(u32 limit);
 static inline u8 has_new_bits(u8* virgin_map);
+
+/* AFLSpy-specific variables * functions */
+#include "afl-spy.h"
 
 /* AFLNet-specific variables & functions */
 
@@ -1022,6 +1026,7 @@ int send_over_network()
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout_usecs;
+
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
@@ -1043,7 +1048,6 @@ int send_over_network()
       FATAL("Unable to bind socket on local source port");
     }
   }
-
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
     //If it cannot connect to the server under test
     //try it again as the server initial startup time is varied
@@ -1051,10 +1055,19 @@ int send_over_network()
       if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) break;
       usleep(1000);
     }
-    if (n== 1000) {
+    if (n == 1000) {
       close(sockfd);
       return 1;
     }
+  }
+
+  if (ssl_enabled) {
+      if (SSL_set_fd(ssl, sockfd) != 1) {
+        FATAL("Cannot associate SSL with socket");
+      }
+      if (SSL_connect(ssl) != 1) {
+        FATAL("Cannot establish SSL connection");
+      }
   }
 
   //retrieve early server response if needed
@@ -1063,7 +1076,6 @@ int send_over_network()
   //write the request messages
   kliter_t(lms) *it;
   messages_sent = 0;
-
   for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
     n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
     messages_sent++;
@@ -1081,7 +1093,6 @@ int send_over_network()
     if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size)) {
       goto HANDLE_RESPONSES;
     }
-
     //Update accumulated response buffer size
     response_bytes[messages_sent - 1] = response_buf_size;
 
@@ -1092,9 +1103,7 @@ int send_over_network()
   }
 
 HANDLE_RESPONSES:
-
   net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
-
   if (messages_sent > 0 && response_bytes != NULL) {
     response_bytes[messages_sent - 1] = response_buf_size;
   }
@@ -1105,7 +1114,14 @@ HANDLE_RESPONSES:
     if (has_new_bits(session_virgin_bits) != 2) break;
   }
 
+  if (ssl_enabled) {
+    SSL_shutdown(ssl);
+    SSL_clear(ssl);
+  }
   close(sockfd);
+  if (qemu_mode == 2) {
+      return 0;
+  }
 
   if (likely_buggy && false_negative_reduction) return 0;
 
@@ -2223,7 +2239,7 @@ EXP_ST void setup_shm(void) {
 
   trace_bits = shmat(shm_id, NULL, 0);
 
-  if (!trace_bits) PFATAL("shmat() failed");
+  if (trace_bits == (void *)-1) PFATAL("shmat() failed");
 
 }
 
@@ -2921,7 +2937,7 @@ EXP_ST void init_forkserver(char** argv) {
 
     setsid();
 
-    dup2(dev_null_fd, 1);
+    // dup2(dev_null_fd, 1);
     dup2(dev_null_fd, 2);
 
     if (out_file) {
@@ -2989,11 +3005,23 @@ EXP_ST void init_forkserver(char** argv) {
   fsrv_ctl_fd = ctl_pipe[1];
   fsrv_st_fd  = st_pipe[0];
 
-  /* Wait for the fork server to come up, but don't wait too long. */
+  /* Wait for the fork server to come up, but don't wait too long except for qemu system mode. */
+  if (qemu_mode == 2) {
+    rlen = read(fsrv_st_fd, &status, 4);
+    if (rlen != 4 || strncmp((char*)&status, "RDY!", 4) != 0) {
+        FATAL("Unexpected response from the fork server: %s", (char*)&status);
+    }
+
+    detect_agent();
+    detect_target();
+    restart_target(); // Use restart_target here to make sure restart script is OK.
+
+    OKF("All right - fork server is up.");
+    return;
+  }
 
   it.it_value.tv_sec = ((exec_tmout * FORK_WAIT_MULT) / 1000);
   it.it_value.tv_usec = ((exec_tmout * FORK_WAIT_MULT) % 1000) * 1000;
-
   setitimer(ITIMER_REAL, &it, NULL);
 
   rlen = read(fsrv_st_fd, &status, 4);
@@ -3145,7 +3173,6 @@ EXP_ST void init_forkserver(char** argv) {
    information. The called program will update trace_bits[]. */
 
 static u8 run_target(char** argv, u32 timeout) {
-
   static struct itimerval it;
   static u32 prev_timed_out = 0;
   static u64 exec_ms = 0;
@@ -3154,7 +3181,11 @@ static u8 run_target(char** argv, u32 timeout) {
   u32 tb4;
 
   child_timed_out = 0;
-
+  if(qemu_mode == 2) {
+    spy_signal->trace_enabled = 1;
+    spy_signal->next_step = 0;
+  }
+  
   /* After this memset, trace_bits[] are effectively volatile, so we
      must prevent any earlier operations from venturing into that
      territory. */
@@ -3249,6 +3280,9 @@ static u8 run_target(char** argv, u32 timeout) {
 
     }
 
+  } else if (qemu_mode == 2) {
+    /* In qemu system mode, we don't need to fork a new process,
+       just make sure the target under test is alive and ready to receive test case. */
   } else {
 
     s32 res;
@@ -3279,13 +3313,32 @@ static u8 run_target(char** argv, u32 timeout) {
   it.it_value.tv_sec = (timeout / 1000);
   it.it_value.tv_usec = (timeout % 1000) * 1000;
 
-  setitimer(ITIMER_REAL, &it, NULL);
+  setitimer(ITIMER_REAL, &it, NULL); // commented for debuging.
 
   /* The SIGALRM handler simply kills the child_pid and sets child_timed_out. */
 
   if (dumb_mode == 1 || no_forkserver) {
     if (use_net) send_over_network();
     if (waitpid(child_pid, &status, 0) <= 0) PFATAL("waitpid() failed");
+
+  } else if (qemu_mode == 2) {
+    if (use_net) send_over_network();
+    // Check the status of the target here instead of receiving it from qemu-spy.
+    int count = 0;
+    test_timeout = 0;
+    while (spy_signal->next_step != 1) {
+      usleep(1000);
+      if (count++ > 100) {
+        test_timeout = 1;
+        break;
+      }
+    }
+    spy_signal->next_step = 0;
+    spy_signal->trace_enabled = 0;
+    
+    // log the trace bits
+    log_trace_bits(count);
+    status = test_alive();
 
   } else {
     if (use_net) send_over_network();
@@ -3319,7 +3372,7 @@ static u8 run_target(char** argv, u32 timeout) {
 
   update_state_bitmap();
   MEM_BARRIER();
-
+  log_trace_bits(0);
   tb4 = *(u32*)trace_bits;
 
 #ifdef WORD_SIZE_64
@@ -3331,6 +3384,23 @@ static u8 run_target(char** argv, u32 timeout) {
   prev_timed_out = child_timed_out;
 
   /* Report outcome to caller. */
+
+  if (qemu_mode == 2) {
+    if (status != ST_TEST_ALIVE && status != ST_TEST_FAILED && status != ST_TEST_TIMEOUT) {
+      OKF("Undefined status from test alive script: %d", status);
+    }
+
+    // Make sure target is alive for next test.
+    if (status != ST_TEST_ALIVE) restart_target();
+
+    if (status == ST_TEST_FAILED || (test_timeout && status == ST_TEST_TIMEOUT)) {
+      return FAULT_CRASH;
+    } else if (test_timeout && status == ST_TEST_ALIVE) {
+      return FAULT_TMOUT;
+    } else {
+      return FAULT_NONE;
+    }
+  }
 
   if (WIFSIGNALED(status) && !stop_soon) {
 
@@ -3418,7 +3488,6 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
   if (q->exec_cksum) memcpy(first_trace, trace_bits, MAP_SIZE);
 
   start_us = get_cur_time_us();
-
   for (stage_cur = 0; stage_cur < stage_max; stage_cur++) {
 
     u32 cksum;
@@ -3428,7 +3497,6 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
     write_to_testcase(use_mem, q->len);
 
     fault = run_target(argv, use_tmout);
-
     /* stop_soon is set by the handler for Ctrl+C. When it's pressed,
        we want to bail out quickly. */
 
@@ -3439,8 +3507,9 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
       goto abort_calibration;
     }
 
-    cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+    // if (test_timeout == 1) break;
 
+    cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
     if (q->exec_cksum != cksum) {
 
       u8 hnb = has_new_bits(virgin_bits);
@@ -5486,6 +5555,9 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   /* End of AFLNet code */
 
   fault = run_target(argv, exec_tmout);
+  if(qemu_mode == 2) {
+    // if (test_timeout == 1) return 0;
+  }
 
   //Update fuzz count, no matter whether the generated test is interesting or not
   if (state_aware_mode) update_fuzzs();
@@ -7817,6 +7889,12 @@ static void handle_skipreq(int sig) {
 
 static void handle_timeout(int sig) {
 
+  if (qemu_mode == 2) {
+    test_timeout = 1;
+    OKF("Test timed out");
+    return;
+  }
+
   if (child_pid > 0) {
 
     child_timed_out = 1;
@@ -7888,8 +7966,8 @@ EXP_ST void check_binary(u8* fname) {
     if (!target_path) FATAL("Program '%s' not found or not executable", fname);
 
   }
-
-  if (getenv("AFL_SKIP_BIN_CHECK")) return;
+  // Skip binary check in qemu system mode
+  if (qemu_mode == 2 || getenv("AFL_SKIP_BIN_CHECK")) return;
 
   /* Check for blatant user errors. */
 
@@ -8677,8 +8755,12 @@ static char** get_qemu_argv(u8* own_loc, char** argv, int argc) {
   u8 *tmp, *cp, *rsl, *own_copy;
 
   /* Workaround for a QEMU stability glitch. */
-
   setenv("QEMU_LOG", "nochain", 1);
+  if (qemu_mode == 2) {
+    // Use argv directly in qemu system mode
+    memcpy(new_argv, argv, sizeof(char*) * argc);
+    return new_argv;
+  }
 
   memcpy(new_argv + 3, argv + 1, sizeof(char*) * argc);
 
@@ -8999,8 +9081,8 @@ int main(int argc, char** argv) {
 
       case 'Q': /* QEMU mode */
 
-        if (qemu_mode) FATAL("Multiple -Q options not supported");
-        qemu_mode = 1;
+        if (qemu_mode == 2) FATAL("More than two -Q options not supported");
+        qemu_mode++;
 
         if (!mem_limit_given) mem_limit = MEM_LIMIT_QEMU;
 
@@ -9076,6 +9158,10 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "HTTP")) {
           extract_requests = &extract_requests_http;
           extract_response_codes = &extract_response_codes_http;
+        } else if (!strcmp(optarg, "HTTPS")) {
+          extract_requests = &extract_requests_http; // the same as HTTP
+          extract_response_codes = &extract_response_codes_http;
+          setup_ssl();
         } else if (!strcmp(optarg, "IPP")) {
           extract_requests = &extract_requests_ipp;
           extract_response_codes = &extract_response_codes_ipp;
@@ -9233,6 +9319,9 @@ int main(int argc, char** argv) {
 
   setup_post();
   setup_shm();
+  // if (qemu_mode == 2) {
+    setup_shm_spy();
+  // }
   init_count_class16();
 
   setup_ipsm();
@@ -9263,7 +9352,6 @@ int main(int argc, char** argv) {
     use_argv = argv + optind;
 
   perform_dry_run(use_argv);
-
   cull_queue();
 
   show_init_stats();

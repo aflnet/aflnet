@@ -2537,6 +2537,11 @@ region_t* convert_kl_messages_to_regions(klist_t(lms) *kl_messages, u32* region_
 }
 
 // Network communication functions
+#ifdef AFLNET_SSL
+#include <openssl/ssl.h>
+extern u8 ssl_enabled;
+extern SSL *ssl;
+#endif
 
 int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
   unsigned int byte_count = 0;
@@ -2551,7 +2556,15 @@ int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
     if (pfd[0].revents & POLLOUT) {
       while (byte_count < len) {
         usleep(10);
+#ifdef AFLNET_SSL
+        if (ssl_enabled) {
+          n = SSL_write(ssl, &mem[byte_count], len - byte_count);
+        } else {
+          n = send(sockfd, &mem[byte_count], len - byte_count, MSG_NOSIGNAL);
+        }
+#else
         n = send(sockfd, &mem[byte_count], len - byte_count, MSG_NOSIGNAL);
+#endif
         if (n == 0) return byte_count;
         if (n == -1) return -1;
         byte_count += n;
@@ -2573,7 +2586,15 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
   // data received
   if (rv > 0) {
     if (pfd[0].revents & POLLIN) {
+#ifdef AFLNET_SSL
+      if (ssl_enabled) {
+        n = SSL_read(ssl, temp_buf, sizeof(temp_buf));
+      } else {
+        n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
+      }
+#else
       n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
+#endif
       if ((n < 0) && (errno != EAGAIN)) {
         return 1;
       }
@@ -2583,7 +2604,15 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
         memcpy(&(*response_buf)[*len], temp_buf, n);
         (*response_buf)[(*len) + n] = '\0';
         *len = *len + n;
+#ifdef AFLNET_SSL
+      if (ssl_enabled) {
+        n = SSL_read(ssl, temp_buf, sizeof(temp_buf));
+      } else {
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
+      }
+#else
+      n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
+#endif
         if ((n < 0) && (errno != EAGAIN)) {
           return 1;
         }
@@ -2688,7 +2717,7 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
   if (strlen(net_config) > 80) return 1;
 
   strncpy(buf, net_config, strlen(net_config));
-   str_rtrim(buf);
+  str_rtrim(buf);
 
   if (!str_split(buf, "/", tokens, tokenCount))
   {

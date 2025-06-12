@@ -1,0 +1,20 @@
+method_GET="GET"
+method_POST="POST"
+method_PUT="PUT"
+method_DELETE="DELETE"
+method_PATCH="PATCH"
+method_HEAD="HEAD"
+method_OPTIONS="OPTIONS"
+
+"/"
+"/data"
+"/data/1"
+"/index.html"
+"/admin"
+"/login.php"
+"/upload"
+"/images/logo.png"
+
+"HTTP/1.1"
+
+"Host: 127.0.0.1:18080"

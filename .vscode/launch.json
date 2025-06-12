@@ -1,0 +1,286 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "AFLNetSpy HTTP Local Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/afl-fuzz",
+            "args": [
+                        "-i", "spy-test-http/inputs", "-o", "spy-test-http/outputs",
+                        "-P", "HTTP", "-N", "tcp://127.0.0.1/18080", "-m", "4096M",
+                        "-d", "-q", "3", "-s", "3", "-E", "-R", "-t" , "600000",
+                        "-QQ", "--",
+                        "gdbserver", "127.0.0.1:1234",
+                        "${QEMUSPY}/build/qemu-system-arm",
+                        "-m", "256M",
+                        "-M", "romulus-bmc",
+                        "-drive", "file=${KERN}/obmc-phosphor-image-romulus.static.mtd,if=mtd,format=raw",
+                        "-net", "nic",
+                        "-net", "user,hostfwd=:127.0.0.1:2222-:22,hostfwd=:127.0.0.1:2443-:443,hostfwd=:127.0.0.1:18080-:8080,hostfwd=:127.0.0.1:14817-:4817,hostfwd=udp:127.0.0.1:2623-:623,hostname=qemu",
+                        "-d", "plugin",
+                        "-plugin", "${AFLSPY}/build/libaflspy.so",
+                        "-D", "spy-test-http/qemu_log.txt",
+                        // "-D", "${AFLSPY}/test/qemu_log.txt",
+                        "-nographic"
+                    ],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "KERN",
+                    "value": "/home/czx/openbmc-workspace/openbmc/build/romulus/tmp/deploy/images/romulus"
+                },
+                {
+                    "name": "QEMUSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy"
+                },
+                {
+                    "name": "AFLSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy/plugin_spy"
+                },
+                {
+                    "name": "TEST_ALIVE_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-http/scripts/test_alive.sh"
+                },
+                {
+                    "name": "TEST_AGENT_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-http/scripts/test_agent.sh"
+                },
+                {
+                    "name": "RESTART_TARGET_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-http/scripts/restart_target.sh"
+                },
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb", // 如果GDB可执行文件不在系统路径中，请指定GDB的完整路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                // {
+                //     "description": "Set detach-on-fork off",
+                //     "text": "set detach-on-fork off",
+                //     "ignoreFailures": true
+                // },
+                // {
+                //     "description": "Set follow-fork-mode child",
+                //     "text": "set follow-fork-mode child",
+                //     "ignoreFailures": true
+                // }
+            ]
+        },
+        {
+            "name": "AFLNetSpy HTTPS Local Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/afl-fuzz",
+            "args": [
+                        "-i", "spy-test-https/inputs", "-o", "spy-test-https/outputs",
+                        "-P", "HTTPS", "-N", "tcp://127.0.0.1/18084", "-m", "4096M",
+                        "-d", "-q", "3", "-s", "3", "-E", "-R", "-W", "5", "-t", "5000", "-w", "50000",
+                        "-QQ", "--",
+                        // "gdbserver", "127.0.0.1:1234",
+                        "${QEMUSPY}/build/qemu-system-arm",
+                        "-m", "256M",
+                        "-M", "romulus-bmc",
+                        "-drive", "file=${KERN}/obmc-phosphor-image-romulus.static.mtd,if=mtd,format=raw",
+                        "-net", "nic",
+                        "-net", "user,hostfwd=:127.0.0.1:18084-:8084,hostfwd=:127.0.0.1:14817-:4817,hostname=qemu",
+                        "-d", "plugin",
+                        "-plugin", "${AFLSPY}/build/libaflspy.so",
+                        "-D", "spy-test-https/qemu_log.txt",
+                        // "-D", "${AFLSPY}/test/qemu_log.txt",
+                        "-nographic"
+                    ],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "KERN",
+                    "value": "/home/czx/openbmc-workspace/openbmc/build/romulus/tmp/deploy/images/romulus"
+                },
+                {
+                    "name": "QEMUSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy"
+                },
+                {
+                    "name": "AFLSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy/plugin_spy"
+                },
+                {
+                    "name": "TEST_ALIVE_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-https/scripts/test_alive.sh"
+                },
+                {
+                    "name": "TEST_AGENT_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-https/scripts/test_agent.sh"
+                },
+                {
+                    "name": "RESTART_TARGET_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-test-https/scripts/restart_target.sh"
+                },
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb", // 如果GDB可执行文件不在系统路径中，请指定GDB的完整路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                // {
+                //     "description": "Set detach-on-fork off",
+                //     "text": "set detach-on-fork off",
+                //     "ignoreFailures": true
+                // },
+                // {
+                //     "description": "Set follow-fork-mode child",
+                //     "text": "set follow-fork-mode child",
+                //     "ignoreFailures": true
+                // }
+            ]
+        },
+        {
+            "name": "AFLNetSpy remote Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "miDebuggerServerAddress": "127.0.0.1:1234",
+            "program": "${workspaceFolder}/afl-fuzz",
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb", // 如果GDB可执行文件不在系统路径中，请指定GDB的完整路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                // {
+                //     "description": "Set detach-on-fork off",
+                //     "text": "set detach-on-fork off",
+                //     "ignoreFailures": true
+                // },
+                // {
+                //     "description": "Set follow-fork-mode child",
+                //     "text": "set follow-fork-mode child",
+                //     "ignoreFailures": true
+                // }
+            ]
+        },
+        {
+            "name": "AFLNetSpy BMCWEB HTTP Local Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/afl-fuzz",
+            "args": [
+                        "-i", "${SPYTEST}/inputs", "-o", "${SPYTEST}/outputs",
+                        "-P", "HTTP", "-N", "tcp://127.0.0.1/2443", "-m", "4096M",
+                        "-d", "-q", "3", "-s", "3", "-R", "-W", "5", "-w", "50000", "-t", "50000", 
+                        "-QQ", "--",
+                        "gdbserver", "127.0.0.1:1234",
+                        "${QEMUSPY}/build/qemu-system-arm",
+                        "-m", "256M",
+                        "-M", "romulus-bmc",
+                        "-drive", "file=${KERN}/obmc-phosphor-image-romulus.static.mtd,if=mtd,format=raw",
+                        "-net", "nic",
+                        "-net", "user,hostfwd=:127.0.0.1:2443-:443,hostfwd=:127.0.0.1:14817-:4817,hostname=qemu",
+                        "-d", "plugin",
+                        "-plugin", "${AFLSPY}/build/libaflspy.so",
+                        "-D", "${SPYTEST}/qemu_log.txt",
+                        // "-D", "${AFLSPY}/test/qemu_log.txt",
+                        "-nographic"
+                    ],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "KERN",
+                    "value": "/home/czx/openbmc-workspace/openbmc/build/romulus/tmp/deploy/images/romulus"
+                },
+                {
+                    "name": "QEMUSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy"
+                },
+                {
+                    "name": "AFLSPY",
+                    "value": "/home/czx/qemu-workspace/qemu-spy/plugin_spy"
+                },
+                {
+                    "name": "SPYTEST",
+                    "value": "spy-bmcweb-http"
+                },
+                {
+                    "name": "TEST_ALIVE_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-bmcweb-http/scripts/test_alive.sh"
+                },
+                {
+                    "name": "TEST_AGENT_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-bmcweb-http/scripts/test_agent.sh"
+                },
+                {
+                    "name": "RESTART_TARGET_SCRIPT",
+                    "value": "/home/czx/afl-workspace/aflnet/spy-bmcweb-http/scripts/restart_target.sh"
+                },
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb", // 如果GDB可执行文件不在系统路径中，请指定GDB的完整路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                // {
+                //     "description": "Set detach-on-fork off",
+                //     "text": "set detach-on-fork off",
+                //     "ignoreFailures": true
+                // },
+                // {
+                //     "description": "Set follow-fork-mode child",
+                //     "text": "set follow-fork-mode child",
+                //     "ignoreFailures": true
+                // }
+            ]
+        },
+        {
+            "name": "AFLNet User qemu remote Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "miDebuggerServerAddress": "127.0.0.1:1234",
+            "program": "${workspaceFolder}/afl-fuzz",
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb", // 如果GDB可执行文件不在系统路径中，请指定GDB的完整路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set detach-on-fork off",
+                    "text": "set detach-on-fork off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set follow-fork-mode child",
+                    "text": "set follow-fork-mode child",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+    ]
+}
