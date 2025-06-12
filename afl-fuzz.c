@@ -1020,8 +1020,8 @@ int send_over_network()
   //Set timeout for socket data sending/receiving -- otherwise it causes a big delay
   //if the server is still alive after processing all the requests
   struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = socket_timeout_usecs;
+  timeout.tv_sec = socket_timeout_usecs / 1000000;
+  timeout.tv_usec = socket_timeout_usecs % 1000000;
   setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
   memset(&serv_addr, '0', sizeof(serv_addr));
