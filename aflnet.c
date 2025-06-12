@@ -1266,6 +1266,93 @@ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsign
   *region_count_ref = region_count;
   return regions;
 }
+
+region_t* extract_requests_opcua(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+{
+    unsigned int byte_index = 0;
+    unsigned int mem_index = 0;
+    unsigned int mem_capacity = 1024;
+    unsigned int region_count = 0;
+    region_t *regions = NULL;
+    char *temp_mem;
+
+    temp_mem = (char *)ck_alloc(mem_capacity);
+
+    unsigned int current_start = 0;
+    unsigned int current_end = 0;
+
+    while (byte_index < buf_size) {
+        temp_mem[mem_index++] = buf[byte_index++];
+
+        if (mem_index >= 8) {
+            unsigned int message_size = ((unsigned int)temp_mem[4]) |
+                                        ((unsigned int)temp_mem[5] << 8) |
+                                        ((unsigned int)temp_mem[6] << 16) |
+                                        ((unsigned int)temp_mem[7] << 24);
+
+            unsigned int bytes_to_advance = message_size - 8;
+            unsigned int advanced_count = 0;
+            while (byte_index < buf_size && advanced_count < bytes_to_advance) {
+                byte_index++;
+                current_end++;
+                advanced_count++;
+            }
+
+            if (byte_index < buf_size) {
+                byte_index--;
+                current_end--;
+            }
+
+            region_count++;
+            regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+            regions[region_count - 1].start_byte = current_start;
+            regions[region_count - 1].end_byte = current_end;
+            regions[region_count - 1].state_sequence = NULL;
+            regions[region_count - 1].state_count = 0;
+
+            if (current_end < buf_size - 1) {
+                mem_index = 0;
+                current_start = current_end + 1;
+                current_end = current_start;
+            }
+        } else {
+            mem_index++;
+            current_end++;
+
+            if (current_end == buf_size - 1) {
+                region_count++;
+                regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+                regions[region_count - 1].start_byte = current_start;
+                regions[region_count - 1].end_byte = current_end;
+                regions[region_count - 1].state_sequence = NULL;
+                regions[region_count - 1].state_count = 0;
+                break;
+            }
+
+            if (mem_index == mem_capacity) {
+                mem_capacity *= 2;
+                temp_mem = (char *)ck_realloc(temp_mem, mem_capacity);
+            }
+        }
+    }
+
+    if (temp_mem) {
+        ck_free(temp_mem);
+    }
+
+    if (region_count == 0 && buf_size > 0) {
+        regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+        regions[0].start_byte = 0;
+        regions[0].end_byte = buf_size - 1;
+        regions[0].state_sequence = NULL;
+        regions[0].state_count = 0;
+        region_count = 1;
+    }
+
+    *region_count_ref = region_count;
+    return regions;
+}
+
 unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -2405,6 +2492,67 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
   if (mem) ck_free(mem);
   *state_count_ref = state_count;
   return state_sequence;
+}
+
+unsigned int* extract_response_codes_opcua(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+    unsigned int byte_pos = 0;
+    unsigned int mem_pos = 0;
+    unsigned int mem_capacity = 1024;
+    unsigned char msg_type;
+    unsigned int* state_codes = NULL;
+    unsigned int state_count = 0;
+    char *temp_mem;
+
+    temp_mem = (char *)ck_alloc(mem_capacity);
+
+    // Initialize with a default state
+    state_codes = (unsigned int *)ck_realloc(state_codes, sizeof(unsigned int));
+    state_codes[state_count++] = 0;
+
+    while (byte_pos < buf_size) {
+        temp_mem[mem_pos++] = buf[byte_pos++];
+
+        if (mem_pos >= 8) {
+            if (temp_mem[0] == 'E' && temp_mem[1] == 'R' && temp_mem[2] == 'R') {
+                msg_type = temp_mem[10];
+            } else {
+                msg_type = 0x00;
+            }
+
+            unsigned int msg_size = ((unsigned int)temp_mem[4]) |
+                                    ((unsigned int)temp_mem[5] << 8) |
+                                    ((unsigned int)temp_mem[6] << 16) |
+                                    ((unsigned int)temp_mem[7] << 24);
+
+            unsigned int bytes_to_skip = msg_size - 8;
+            unsigned int skip_count = 0;
+            while (byte_pos < buf_size && skip_count < bytes_to_skip) {
+                byte_pos++;
+                skip_count++;
+            }
+
+            if (byte_pos < buf_size) {
+                byte_pos--;
+            }
+
+            state_codes = (unsigned int *)ck_realloc(state_codes, (state_count + 1) * sizeof(unsigned int));
+            state_codes[state_count++] = (unsigned int)msg_type;
+            mem_pos = 0;
+        }
+
+        if (mem_pos == mem_capacity) {
+            mem_capacity *= 2;
+            temp_mem = (char *)ck_realloc(temp_mem, mem_capacity);
+        }
+    }
+
+    if (temp_mem) {
+        ck_free(temp_mem);
+    }
+
+    *state_count_ref = state_count;
+    return state_codes;
 }
 
 // kl_messages manipulating functions
