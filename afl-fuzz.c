@@ -428,6 +428,29 @@ void setup_ipsm()
   khs_ipsm_paths = kh_init(hs32);
 
   khms_states = kh_init(hms);
+
+  //Add the initial state (ID 0) to the hashtable and state_ids array
+  int discard;
+  state_info_t *initial_state = (state_info_t *) ck_alloc (sizeof(state_info_t));
+  initial_state->id = 0;
+  initial_state->is_covered = 1;
+  initial_state->paths = 0;
+  initial_state->paths_discovered = 0;
+  initial_state->selected_times = 0;
+  initial_state->fuzzs = 0;
+  initial_state->score = 1;
+  initial_state->selected_seed_index = 0;
+  initial_state->seeds = NULL;
+  initial_state->seeds_count = 0;
+
+  khint_t k = kh_put(hms, khms_states, 0, &discard);
+  kh_value(khms_states, k) = initial_state;
+
+  state_ids = (u32 *) ck_alloc(sizeof(u32));
+  state_ids[state_ids_count++] = 0;
+
+  //Add the initial state to the graph as well
+  agnode(ipsm, "0", TRUE);
 }
 
 /* Free memory allocated to state-machine variables */
@@ -458,6 +481,9 @@ void expand_was_fuzzed_map(u32 new_states, u32 new_qentries) {
   int i, j;
   //Realloc the memory
   was_fuzzed_map = (char **)ck_realloc(was_fuzzed_map, (fuzzed_map_states + new_states) * sizeof(char *));
+  for (i = fuzzed_map_states; i < fuzzed_map_states + new_states; i++)
+    was_fuzzed_map[i] = NULL;
+
   for (i = 0; i < fuzzed_map_states + new_states; i++)
     was_fuzzed_map[i] = (char *)ck_realloc(was_fuzzed_map[i], (fuzzed_map_qentries + new_qentries) * sizeof(char));
 
@@ -9094,7 +9120,10 @@ int main(int argc, char** argv) {
         }else if (!strcmp(optarg, "SNMP")) {
           extract_requests = &extract_requests_SNMP;
           extract_response_codes = &extract_response_codes_SNMP;
-        } else {
+		} else if (!strcmp(optarg, "MODBUS")) {
+        extract_requests = &extract_requests_modbus;
+        extract_response_codes = &extract_response_codes_modbus;
+        }else {
           FATAL("%s protocol is not supported yet!", optarg);
         }
 

@@ -25,9 +25,11 @@ VERSION     = $(shell grep '^\#define VERSION ' ../config.h | cut -d '"' -f2)
 LLVM_CONFIG ?= llvm-config
 
 CFLAGS      ?= -O3 -funroll-loops
+LLVM_MAJOR  = $(shell $(LLVM_CONFIG) --version | cut -d. -f1)
 CFLAGS      += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign \
+               -DLLVM_MAJOR=$(LLVM_MAJOR) \
                -DAFL_PATH=\"$(HELPER_PATH)\" -DBIN_PATH=\"$(BIN_PATH)\" \
-               -DVERSION=\"$(VERSION)\" 
+               -DVERSION=\"$(VERSION)\"
 ifdef AFL_TRACE_PC
   CFLAGS    += -DUSE_TRACE_PC=1
 endif

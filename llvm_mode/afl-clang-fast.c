@@ -135,6 +135,9 @@ static void edit_params(u32 argc, char** argv) {
   cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-pass.so", obj_path);
+#if defined(LLVM_MAJOR) && LLVM_MAJOR >= 13
+  cc_params[cc_par_cnt++] = "-flegacy-pass-manager";
+#endif
 #endif /* ^USE_TRACE_PC */
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";

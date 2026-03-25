@@ -2427,6 +2427,8 @@ klist_t(lms) *construct_kl_messages(u8* fname, region_t *regions, u32 region_cou
     m->mdata = (char *) ck_alloc(len);
     m->msize = len;
     if (m->mdata == NULL) PFATAL("Unable to allocate memory region to store new message");
+    //Seek to the correct offset — regions may not be contiguous after mutation
+    fseek(fseed, regions[i].start_byte, SEEK_SET);
     fread(m->mdata, 1, len, fseed);
 
     //Insert the message to the linked list
@@ -2761,4 +2763,94 @@ u32 read_bytes_to_uint32(unsigned char* buf, unsigned int offset, int num_bytes)
     val = (val << 8) + buf[i+offset];
   }
   return val;
+}
+
+/* ========== MODBUS TCP PROTOCOL SUPPORT ========== */
+
+/*
+Modbus TCP Response Structure:
+[Transaction ID (2B)] [Protocol ID (2B)] [Length (2B)] [Unit ID (1B)] [Function Code (1B)] [Data...]
+
+Offset 7 is the Function Code.
+If Function Code >= 0x80, it is an Exception Response.
+*/
+
+unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) {
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  unsigned int offset = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (offset + 8 <= buf_size) {
+    // Read MBAP header length field (bytes 4-5, big-endian)
+    unsigned int pdu_len = (buf[offset + 4] << 8) | buf[offset + 5];
+
+    // Validate PDU length against remaining buffer to prevent
+    // trusting attacker-controlled length values
+    if (pdu_len == 0 || pdu_len > buf_size - offset - 6) break;
+
+    unsigned int msg_len = 6 + pdu_len; // MBAP header (6) + PDU
+
+    if (offset + msg_len > buf_size) break;
+
+    // Function code is at offset 7 within each message
+    unsigned int func_code = buf[offset + 7];
+
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = func_code;
+
+    offset += msg_len;
+  }
+
+  // If no valid messages found, return a default state
+  if (state_count == 0 && buf_size >= 8) {
+    state_count = 1;
+    state_sequence = (unsigned int *)ck_alloc(sizeof(unsigned int));
+    state_sequence[0] = buf[7];
+  }
+
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  region_t *regions = NULL;
+  unsigned int region_count = 0;
+  unsigned int offset = 0;
+
+  while (offset + 8 <= buf_size) {
+    // Read MBAP header length field
+    unsigned int pdu_len = (buf[offset + 4] << 8) | buf[offset + 5];
+    unsigned int msg_len = 6 + pdu_len;
+
+    if (offset + msg_len > buf_size) break;
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = offset;
+    regions[region_count - 1].end_byte = offset + msg_len - 1;
+    regions[region_count - 1].modifiable = 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    offset += msg_len;
+  }
+
+  // If no valid regions found, treat entire buffer as one region
+  if (region_count == 0 && buf_size > 0) {
+    region_count = 1;
+    regions = (region_t *)ck_alloc(sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].modifiable = 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+  }
+
+  *region_count_ref = region_count;
+  return regions;
 }

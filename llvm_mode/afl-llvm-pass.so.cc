@@ -39,6 +39,7 @@
 #include <unistd.h>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Pass.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -131,13 +132,21 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       /* Load prev_loc */
 
+#if LLVM_VERSION_MAJOR >= 14
+      LoadInst *PrevLoc = IRB.CreateLoad(Int32Ty, AFLPrevLoc);
+#else
       LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
+#endif
       PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
 
       /* Load SHM pointer */
 
+#if LLVM_VERSION_MAJOR >= 14
+      LoadInst *MapPtr = IRB.CreateLoad(PointerType::get(Int8Ty, 0), AFLMapPtr);
+#else
       LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
+#endif
       MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       // Value *MapPtrIdx =
       //     IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
@@ -145,13 +154,23 @@ bool AFLCoverage::runOnModule(Module &M) {
         (PrevLocCasted XOR PrevLocCasted) -->
         (((PrevLocCasted XOR PrevLocCasted) % (MAP_SIZE - SHIFT_SIZE)) + SHIFT_SIZE)
       */
+#if LLVM_VERSION_MAJOR >= 14
+      Value *MapPtrIdx =
+          IRB.CreateGEP(Int8Ty, MapPtr,
+                        IRB.CreateAdd(IRB.CreateURem(IRB.CreateXor(PrevLocCasted, CurLoc), ConstantInt::get(Int32Ty, MAP_SIZE - SHIFT_SIZE)), ConstantInt::get(Int32Ty, SHIFT_SIZE)));
+#else
       Value *MapPtrIdx =
           IRB.CreateGEP(MapPtr,
                         IRB.CreateAdd(IRB.CreateURem(IRB.CreateXor(PrevLocCasted, CurLoc), ConstantInt::get(Int32Ty, MAP_SIZE - SHIFT_SIZE)), ConstantInt::get(Int32Ty, SHIFT_SIZE)));
+#endif
 
       /* Update bitmap */
 
+#if LLVM_VERSION_MAJOR >= 14
+      LoadInst *Counter = IRB.CreateLoad(Int8Ty, MapPtrIdx);
+#else
       LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+#endif
       Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
       IRB.CreateStore(Incr, MapPtrIdx)
