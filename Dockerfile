@@ -1,24 +1,32 @@
-# syntax=docker/dockerfile-upstream:master-labs
-FROM ubuntu:18.04
+FROM ubuntu:24.04
 
-RUN apt-get -y update && \
-    apt-get -y install sudo \
-    apt-utils \
-    build-essential \
-    openssl \
-    clang \
-    graphviz-dev \
-    libcap-dev
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        build-essential \
+        clang \
+        clang-18 \
+        llvm-18-dev \
+        llvm-18-tools \
+        lld-18 \
+        openssl \
+        graphviz \
+        libgraphviz-dev \
+        libcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Toolchain default for LLVM mode (passed explicitly to llvm_mode build below)
+ENV LLVM_CONFIG=llvm-config-18
 
 # Download and compile AFLNet
-ENV LLVM_CONFIG="llvm-config-6.0"
-
-ADD --keep-git-dir=true https://github.com/aflnet/aflnet.git /opt/aflnet
+RUN git clone --depth 1 https://github.com/Rosayxy/aflnet.git /opt/aflnet
 WORKDIR /opt/aflnet
 
-RUN make clean all && \
-    cd llvm_mode && \
-    make
+RUN make clean all \
+    && make -C llvm_mode clean all CC=clang-18 CXX=clang++-18 LLVM_CONFIG=llvm-config-18
 
 # Set up environment variables for AFLNet
 ENV AFLNET="/opt/aflnet"

@@ -131,10 +131,22 @@ static void edit_params(u32 argc, char** argv) {
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-sanitizer-coverage-block-threshold=0";
 #else
+  /* Prefer the new pass manager plugin API via -fpass-plugin.
+     This requires afl-llvm-pass.so to export llvmGetPassPluginInfo().
+
+     For very old Clang versions that don't support -fpass-plugin, fall back
+     to the legacy cc1 loader mechanism.
+  */
+#if defined(__clang_major__) && (__clang_major__ >= 11)
+  cc_params[cc_par_cnt++] =
+      alloc_printf("-fpass-plugin=%s/afl-llvm-pass.so", obj_path);
+#else
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] = "-Xclang";
-  cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-pass.so", obj_path);
+  cc_params[cc_par_cnt++] =
+      alloc_printf("%s/afl-llvm-pass.so", obj_path);
+#endif
 #endif /* ^USE_TRACE_PC */
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";

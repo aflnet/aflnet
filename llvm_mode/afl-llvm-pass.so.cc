@@ -39,38 +39,31 @@
 #include <unistd.h>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
+
+#if LLVM_VERSION_MAJOR < 11
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#else
+#include "llvm/IR/PassManager.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/PassPlugin.h"
+#include "llvm/Passes/OptimizationLevel.h"
+#endif
 
 using namespace llvm;
 
 namespace {
 
-  class AFLCoverage : public ModulePass {
+  /* Shared instrumentation implementation. Returns true if the module was
+     modified. */
 
-    public:
-
-      static char ID;
-      AFLCoverage() : ModulePass(ID) { }
-
-      bool runOnModule(Module &M) override;
-
-      // StringRef getPassName() const override {
-      //  return "American Fuzzy Lop Instrumentation";
-      // }
-
-  };
-
-}
-
-
-char AFLCoverage::ID = 0;
-
-
-bool AFLCoverage::runOnModule(Module &M) {
+  static bool instrumentModule(Module &M) {
 
   LLVMContext &C = M.getContext();
 
@@ -103,11 +96,11 @@ bool AFLCoverage::runOnModule(Module &M) {
   /* Get globals for the SHM region and the previous location. Note that
      __afl_prev_loc is thread-local. */
 
-  GlobalVariable *AFLMapPtr =
+    GlobalVariable *AFLMapPtr =
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
-                         GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
+               GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
-  GlobalVariable *AFLPrevLoc = new GlobalVariable(
+    GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
@@ -131,37 +124,47 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       /* Load prev_loc */
 
-      LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
-      PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+      LoadInst *PrevLoc = IRB.CreateLoad(Int32Ty, AFLPrevLoc);
+      PrevLoc->setMetadata(M.getMDKindID("nosanitize"),
+               MDNode::get(C, ArrayRef<Metadata *>()));
       Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
 
       /* Load SHM pointer */
 
-      LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
-      MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+        LoadInst *MapPtr =
+          IRB.CreateLoad(PointerType::get(Int8Ty, 0), AFLMapPtr);
+        MapPtr->setMetadata(M.getMDKindID("nosanitize"),
+                  MDNode::get(C, ArrayRef<Metadata *>()));
       // Value *MapPtrIdx =
       //     IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
       /* Shift coverage feedback to the left by SHIFT_SIZE many elements
         (PrevLocCasted XOR PrevLocCasted) -->
         (((PrevLocCasted XOR PrevLocCasted) % (MAP_SIZE - SHIFT_SIZE)) + SHIFT_SIZE)
       */
-      Value *MapPtrIdx =
-          IRB.CreateGEP(MapPtr,
-                        IRB.CreateAdd(IRB.CreateURem(IRB.CreateXor(PrevLocCasted, CurLoc), ConstantInt::get(Int32Ty, MAP_SIZE - SHIFT_SIZE)), ConstantInt::get(Int32Ty, SHIFT_SIZE)));
+        Value *MapPtrIdx = IRB.CreateGEP(
+          Int8Ty, MapPtr,
+          IRB.CreateAdd(
+            IRB.CreateURem(
+              IRB.CreateXor(PrevLocCasted, CurLoc),
+              ConstantInt::get(Int32Ty, MAP_SIZE - SHIFT_SIZE)),
+            ConstantInt::get(Int32Ty, SHIFT_SIZE)));
 
       /* Update bitmap */
 
-      LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
-      Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+      LoadInst *Counter = IRB.CreateLoad(Int8Ty, MapPtrIdx);
+      Counter->setMetadata(M.getMDKindID("nosanitize"),
+               MDNode::get(C, ArrayRef<Metadata *>()));
       Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
-      IRB.CreateStore(Incr, MapPtrIdx)
-          ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+        IRB.CreateStore(Incr, MapPtrIdx)
+            ->setMetadata(M.getMDKindID("nosanitize"),
+                          MDNode::get(C, ArrayRef<Metadata *>()));
 
       /* Set prev_loc to cur_loc >> 1 */
 
-      StoreInst *Store =
-          IRB.CreateStore(ConstantInt::get(Int32Ty, cur_loc >> 1), AFLPrevLoc);
-      Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+        StoreInst *Store = IRB.CreateStore(
+            ConstantInt::get(Int32Ty, cur_loc >> 1), AFLPrevLoc);
+        Store->setMetadata(M.getMDKindID("nosanitize"),
+                           MDNode::get(C, ArrayRef<Metadata *>()));
 
       inst_blocks++;
 
@@ -179,9 +182,27 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   }
 
-  return true;
+    return true;
+
+  }
+
+#if LLVM_VERSION_MAJOR < 11
+
+  class AFLCoverage : public ModulePass {
+
+   public:
+
+    static char ID;
+    AFLCoverage() : ModulePass(ID) {}
+
+    bool runOnModule(Module &M) override { return instrumentModule(M); }
+
+  };
 
 }
+
+
+char AFLCoverage::ID = 0;
 
 
 static void registerAFLPass(const PassManagerBuilder &,
@@ -197,3 +218,34 @@ static RegisterStandardPasses RegisterAFLPass(
 
 static RegisterStandardPasses RegisterAFLPass0(
     PassManagerBuilder::EP_EnabledOnOptLevel0, registerAFLPass);
+
+#else  /* LLVM_VERSION_MAJOR >= 11 */
+
+  struct AFLCoverageNewPM : public PassInfoMixin<AFLCoverageNewPM> {
+
+    PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+
+      instrumentModule(M);
+      return PreservedAnalyses::none();
+
+    }
+
+  };
+
+}  // namespace
+
+
+extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
+llvmGetPassPluginInfo() {
+
+  return {LLVM_PLUGIN_API_VERSION, "afl-coverage", VERSION,
+          [](PassBuilder &PB) {
+            PB.registerOptimizerLastEPCallback(
+                [](ModulePassManager &MPM, OptimizationLevel) {
+                  MPM.addPass(AFLCoverageNewPM());
+                });
+          }};
+
+}
+
+#endif
