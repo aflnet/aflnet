@@ -1266,6 +1266,39 @@ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsign
   *region_count_ref = region_count;
   return regions;
 }
+
+// Modbus/TCP frame: [Transaction ID 2B][Protocol ID 2B][Length 2B][Unit ID 1B][Function code 1B][Data]
+// Length counts the bytes after it. Returns the size of the frame at buf, 0 if there is no complete frame.
+static unsigned int modbus_frame_size(unsigned char* buf, unsigned int size)
+{
+  if (size < 8) return 0;
+  unsigned int length = (buf[4] << 8) | buf[5];
+  return (length >= 2 && length <= size - 6) ? 6 + length : 0;
+}
+
+region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+{
+  region_t *regions = NULL;
+  unsigned int region_count = 0, offset = 0;
+
+  while (offset < buf_size) {
+    // One region per frame; leftover bytes that do not form a frame become the last region
+    unsigned int size = modbus_frame_size(buf + offset, buf_size - offset);
+    if (size == 0) size = buf_size - offset;
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = offset;
+    regions[region_count - 1].end_byte = offset + size - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+    offset += size;
+  }
+
+  *region_count_ref = region_count;
+  return regions;
+}
+
 unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -2403,6 +2436,36 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
   }
 
   if (mem) ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0, offset = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0; // initial status code is 0
+
+  while (offset < buf_size) {
+    // State = function code; exceptions (code | 0x80) also keep the exception code;
+    // leftover bytes that do not form a frame get state 0x10000
+    unsigned int size = modbus_frame_size(buf + offset, buf_size - offset);
+    unsigned int message_code = 0x10000;
+    if (size == 0) size = buf_size - offset;
+    else {
+      message_code = buf[offset + 7];
+      if ((message_code & 0x80) && size > 8) message_code = (message_code << 8) | buf[offset + 8];
+    }
+
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = message_code;
+    offset += size;
+  }
+
   *state_count_ref = state_count;
   return state_sequence;
 }
